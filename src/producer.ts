@@ -4,10 +4,10 @@
  * ctx-driven builders (formerly cfg-foundry-plugin/.../overlay3d/scene-json.js — the "survivor") so
  * there is a single source of truth: fix a fidelity bug once, both hosts get it.
  *
- * SHAPE, NOT POLICY. This module owns the geometry/colour/elevation MATH that turns Foundry documents
+ * SHAPE, NOT POLICY. This module owns the geometry/color/elevation MATH that turns Foundry documents
  * into the renderer's normalized `ViewerScene`. It owns NO Foundry runtime, NO three, NO DOM. Every
  * host-specific DECISION — which level is sliced, whether a placeable is visible to THIS viewer, the
- * live disposition palette, the environment colours, terrain sampling — arrives through a
+ * live disposition palette, the environment colors, terrain sampling — arrives through a
  * `SceneProducerCtx` the host assembles. The live plugin fills the ctx from `canvas`; the stored
  * adapter fills it from a plain JSON doc (render-all, stored `hidden` flags, fallback constants).
  *
@@ -33,9 +33,9 @@ import type {
   ViewerTemplate,
 } from './core.js'
 
-// ── Pure colour + flag helpers ────────────────────────────────────────────────
+// ── Pure color + flag helpers ────────────────────────────────────────────────
 
-/** Parse a Foundry colour (hex string "#rrggbb" or a number) to a 0xRRGGBB number, else `dflt`. */
+/** Parse a Foundry color (hex string "#rrggbb" or a number) to a 0xRRGGBB number, else `dflt`. */
 export function parseHexColor(c: unknown, dflt?: number): number | undefined {
   if (c == null || c === '') return dflt
   if (typeof c === 'number') return c
@@ -183,7 +183,7 @@ export function resolveActiveLevel(ctx: {
 
 // ── Sub-builders (pure; exported for unit tests) ───────────────────────────────
 
-/** Grid-helper config. Gridless (type 0) → off. Colour is a hex STRING like "#999999". */
+/** Grid-helper config. Gridless (type 0) → off. Color is a hex STRING like "#999999". */
 export function buildGridJson(grid: { type?: number; color?: unknown; alpha?: unknown; distance?: unknown; units?: unknown } | undefined, size: number): NonNullable<ViewerScene['grid']> {
   const out: NonNullable<ViewerScene['grid']> = {
     size: size || 100,
@@ -577,8 +577,8 @@ export interface ProducerLightsCtx {
   docInSlice: (doc: { elevation?: number; hidden?: boolean; disposition?: number; flags?: Record<string, unknown> }) => boolean
   tokenSizePx: (doc: ProducerTokenLight) => { w: number; h: number }
   /** Ambient intensity coefficients (intensity = base + lit·`lit`). Defaults are the live plugin's,
-   * paired with real canvas.environment colours; the stored adapter, working from grey fallback
-   * colours, passes its own tuned (dimmer) values so the offline look is unchanged. Genuine per-host
+   * paired with real canvas.environment colors; the stored adapter, working from grey fallback
+   * colors, passes its own tuned (dimmer) values so the offline look is unchanged. Genuine per-host
    * visual tuning, parameterized rather than forked. */
   ambientCoeffs?: { hemiBase?: number; hemiLit?: number; sunBase?: number; sunLit?: number }
 }
@@ -710,7 +710,7 @@ export function buildTokenJson(doc: ProducerToken, ctx: ProducerTokenCtx): Viewe
   const flags = cfgFlags(doc.flags)
   const modelSrc = (flags.modelSrc as string) || (flags.model3d as string)
   // Mirrors TokenDocument#isSecret: a SECRET token this viewer can't observe gets none of its
-  // informational chrome — substitute the neutral/INACTIVE colour instead of leaking "secret".
+  // informational chrome — substitute the neutral/INACTIVE color instead of leaking "secret".
   const color = ctx.isSecretFromViewer
     ? dispositionColor(undefined, false, ctx.dispositionColors)
     : dispositionColor(doc.disposition, ctx.hasPlayerOwner, ctx.dispositionColors)
@@ -824,7 +824,7 @@ export function buildWallsJson(docs: ProducerWall[] | undefined, ctx: ProducerWa
       wall.dir = doc.dir ?? 0
       wall.blocksLight = (doc.light ?? 20) !== 0
       // Base 3D texture: OUR OWN flag drives any segment; native `animation.texture` is a fallback; then
-      // the scene/level 3D default (host-resolved). No texture → an optional flat colour.
+      // the scene/level 3D default (host-resolved). No texture → an optional flat color.
       const a = doc.animation || {}
       const cfg = cfgFlags(doc.flags)
       const dflt = ctx.wall3dDefaults ? ctx.wall3dDefaults(doc) || {} : {}

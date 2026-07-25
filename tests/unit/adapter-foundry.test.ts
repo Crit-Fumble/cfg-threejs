@@ -76,7 +76,7 @@ describe('dispositionColor', () => {
 })
 
 describe('foundrySceneToViewer (base conversions)', () => {
-  it('converts grid size, padded bounds, and background colour', () => {
+  it('converts grid size, padded bounds, and background color', () => {
     const v = foundrySceneToViewer(FOUNDRY_SCENE)
     expect(v.grid?.size).toBe(100)
     // padding default 0.25 → origin ceil(0.25·3000/100)·100 = 800
@@ -99,7 +99,7 @@ describe('foundrySceneToViewer (base conversions)', () => {
     expect(foundrySceneToViewer(scene).tokens?.find((x) => x.id === 'f')?.fit).toBe('cover')
   })
 
-  it('a Dynamic Token Ring carries subject texture + ring/background colours + subject scale', () => {
+  it('a Dynamic Token Ring carries subject texture + ring/background colors + subject scale', () => {
     const scene = {
       grid: { size: 100, distance: 5 },
       width: 1000,
@@ -119,7 +119,7 @@ describe('foundrySceneToViewer (base conversions)', () => {
     }
     const t = foundrySceneToViewer(scene).tokens?.find((x) => x.id === 'r')
     expect(t).toMatchObject({ texture: 'subject.png', ringColor: 0xff0000, ringBackground: 0x00ff00, artScale: 1.5 })
-    // Ring off → raw art, no ring-colour/scale overrides.
+    // Ring off → raw art, no ring-color/scale overrides.
     const off = foundrySceneToViewer({ ...scene, tokens: [{ ...scene.tokens[0], ring: { enabled: false } }] }).tokens?.find((x) => x.id === 'r')
     expect(off?.texture).toBe('raw.png')
     expect(off?.ringColor).toBeUndefined()
@@ -433,7 +433,7 @@ describe('convertFoundryScene — heightmap terrain', () => {
     expect(scene.terrain?.src).toBe('/assets/worlds/w/ground.webp')
   })
 
-  it('emits terrain with no src when no map is available (core falls back to its flat colour)', () => {
+  it('emits terrain with no src when no map is available (core falls back to its flat color)', () => {
     const { scene } = convertFoundryScene(
       { grid: { size: 100, distance: 5 }, flags: { 'crit-fumble-core': { heightfield: { cols: 2, rows: 2, heights: [0, 1, 2, 3] } } } },
       { resolveUrl },

@@ -63,7 +63,7 @@ export interface ViewerToken {
    * differs from `elevation`. Defaults to `elevation` (no stalk). */
   floorElevation?: number
   /** Multiplicative art tint (Foundry `texture.tint`). Default 0xffffff (no tint). Multiplies
-   * the texture like PIXI's sprite tint — used for ghost/clone/injured recolours. */
+   * the texture like PIXI's sprite tint — used for ghost/clone/injured recolors. */
   tint?: number
   /** Whole-token opacity (Foundry `document.alpha`, and the GM's hidden-token dim). Default 1.
    * < 1 renders the body translucent (blended, no depth-write, drawn after walls) at creation
@@ -89,16 +89,16 @@ export interface ViewerToken {
   fit?: 'contain' | 'cover' | 'fill' | 'width' | 'height'
   /** Disposition-tinted base ring on the floor. Default true. */
   ring?: boolean
-  /** Base-ring colour override (Foundry Dynamic Ring `ring.colors.ring`). Default: `color`. */
+  /** Base-ring color override (Foundry Dynamic Ring `ring.colors.ring`). Default: `color`. */
   ringColor?: number
-  /** Dynamic-ring background disc colour (`ring.colors.background`). When set, a filled disc is
+  /** Dynamic-ring background disc color (`ring.colors.background`). When set, a filled disc is
    * drawn behind the token (the ring's backdrop). Omit for none. */
   ringBackground?: number
   /** Selected/controlled by the viewer → a bright highlight ring at the floor. */
   selected?: boolean
-  /** Targeted by the viewer (attack/spell/etc.) → a coloured reticle halo above the token. */
+  /** Targeted by the viewer (attack/spell/etc.) → a colored reticle halo above the token. */
   targeted?: boolean
-  /** Reticle colour for `targeted` (e.g. the targeting user's colour). Default red. */
+  /** Reticle color for `targeted` (e.g. the targeting user's color). Default red. */
   targetColor?: number
   /** The native Foundry Level-doc id this token is on (`token.level`). Lets the host slice keep the
    * token on its own level (and see-through levels) by id; falls back to `floorElevation` band when
@@ -117,7 +117,7 @@ export interface ViewerToken {
 export interface ViewerTokenBar {
   value: number
   max: number
-  /** Bar fill colour (0xRRGGBB). Default derives from value/max (green→amber→red). */
+  /** Bar fill color (0xRRGGBB). Default derives from value/max (green→amber→red). */
   color?: number
 }
 
@@ -146,7 +146,7 @@ export interface ViewerWall {
   doorState?: ViewerDoorState
   /** Optional bitmap texture (Foundry's native `animation.texture`, present on every
    * wall). A textured segment renders as a flat, unlit vertical quad with this map
-   * instead of the instanced coloured box — "flat walls with bitmap textures". */
+   * instead of the instanced colored box — "flat walls with bitmap textures". */
   texture?: string
   /** Mirror the wall texture horizontally. */
   flip?: boolean
@@ -262,7 +262,7 @@ export interface ViewerRegion {
   indices: number[]
   /** Boundary loops [x0,y0,…] (outer + holes) for the vertical skirt. */
   rings?: number[][]
-  /** Scene map texture to drape over the raised top (the lifted island content); else a flat colour. */
+  /** Scene map texture to drape over the raised top (the lifted island content); else a flat color. */
   src?: string
   color?: number
   opacity?: number
@@ -271,7 +271,7 @@ export interface ViewerRegion {
 /**
  * A continuous low-poly terrain surface: a subdivided plane over the scene bounds whose
  * vertices are displaced by a per-cell height field (a heightmap). The scene's map texture
- * drapes over it and relief shading is baked into vertex colours so it stays unlit
+ * drapes over it and relief shading is baked into vertex colors so it stays unlit
  * (papercraft) yet slopes still read. `heights` is row-major, length cols*rows, in world px.
  */
 export interface ViewerTerrain {
@@ -1367,7 +1367,7 @@ export function createViewer({
   /**
    * Continuous heightmap terrain: a subdivided plane over the scene bounds, each vertex
    * displaced by a per-cell height, the map texture draped over it. Low-poly relief shading
-   * is BAKED into vertex colours (unlit MeshBasic like the flat floor — predictable
+   * is BAKED into vertex colors (unlit MeshBasic like the flat floor — predictable
    * brightness, papercraft look — but slopes still read from the baked light). Replaces the
    * flat map floor in 3D. `heights` is row-major (cols×rows) in world px.
    */
@@ -1586,7 +1586,7 @@ export function createViewer({
 
   // ── Level-Stamp reticle: a footprint outline placed at an EXPLICIT world position + TARGET height
   // (not the terrain surface), so the GM sees exactly which tiles and at what elevation the stamp will
-  // set. Distinct cyan colour from the yellow freehand brush cursor. ──────────────────────────────
+  // set. Distinct cyan color from the yellow freehand brush cursor. ──────────────────────────────
   // The reticle is a translucent, slightly-3D cyan TILE (fill + a bit of height) topped by a bright
   // outline, so it reads as a solid block hovering at the target elevation — distinct from the yellow
   // freehand brush ring.
@@ -1714,7 +1714,7 @@ export function createViewer({
     const z0 = bz - bounds.height / 2
     // Top fill: canvas (x,y) → world (x, surface, z), reusing Foundry's triangle indices.
     // UVs come from each vertex's position in the scene rect so the MAP drapes onto the
-    // raised top — the lifted area shows the actual island art, not a flat colour.
+    // raised top — the lifted area shows the actual island art, not a flat color.
     const pos = new Float32Array((verts.length / 2) * 3)
     const uv = new Float32Array((verts.length / 2) * 2)
     for (let i = 0, j = 0, u = 0; i < verts.length; i += 2, j += 3, u += 2) {
@@ -1755,7 +1755,7 @@ export function createViewer({
       const sgeo = new THREE.BufferGeometry()
       sgeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(sp), 3))
       sgeo.computeVertexNormals()
-      // Cliff face: an earthy rock tone under a map-draped top, else a shade of the tier colour.
+      // Cliff face: an earthy rock tone under a map-draped top, else a shade of the tier color.
       const sideColor = rg.src ? new THREE.Color(0x6b5a45) : new THREE.Color(color).multiplyScalar(0.72)
       const skirt = new THREE.Mesh(sgeo, new THREE.MeshBasicMaterial({ color: sideColor, side: THREE.DoubleSide, transparent, opacity }))
       scene.add(skirt)
@@ -1908,7 +1908,7 @@ export function createViewer({
         g.font = `bold ${fs}px sans-serif`
         g.textAlign = 'center'
         g.textBaseline = 'middle'
-        g.lineWidth = Math.max(3, fs * 0.16) // dark halo so any colour stays legible over the map
+        g.lineWidth = Math.max(3, fs * 0.16) // dark halo so any color stays legible over the map
         g.strokeStyle = 'rgba(0,0,0,0.85)'
         g.strokeText(text, canvas.width / 2, canvas.height / 2)
         const col = d.textColor ?? d.strokeColor ?? 0xffffff
@@ -1994,7 +1994,7 @@ export function createViewer({
           new THREE.MeshBasicMaterial({ color: d.strokeColor ?? 0xffdd55, transparent: true, opacity: d.strokeAlpha ?? 0.95, depthTest: false, depthWrite: false, side: THREE.DoubleSide }),
         )
         stroke.renderOrder = 9
-        stroke.userData = { drawingId: d.id, isStroke: true } // isStroke → setDrawingHighlight recolours it
+        stroke.userData = { drawingId: d.id, isStroke: true } // isStroke → setDrawingHighlight recolors it
         group.add(stroke)
       }
     }
@@ -2017,13 +2017,13 @@ export function createViewer({
           m.color.setHex(on ? 0xffffff : base)
           ;(c as ThreeNS.Line).renderOrder = on ? 12 : 9
         } else if (anyC.isMesh && anyC.userData?.isStroke) {
-          // The stroke is a ribbon mesh now (world-unit width); recolour it like the old line. The
-          // fill mesh is also a Mesh but carries no isStroke flag, so it keeps its user fill colour.
+          // The stroke is a ribbon mesh now (world-unit width); recolor it like the old line. The
+          // fill mesh is also a Mesh but carries no isStroke flag, so it keeps its user fill color.
           const m = (c as ThreeNS.Mesh).material as ThreeNS.MeshBasicMaterial
           m.color.setHex(on ? 0xffffff : base)
           ;(c as ThreeNS.Mesh).renderOrder = on ? 12 : 9
         } else if (anyC.isSprite) {
-          // A text label has no outline to recolour — bump its scale so the selection is visible.
+          // A text label has no outline to recolor — bump its scale so the selection is visible.
           const sp = c as ThreeNS.Sprite
           const bs = (sp.userData?.baseScale as number[] | undefined) ?? [sp.scale.x, sp.scale.y]
           const k = on ? 1.18 : 1
@@ -2128,7 +2128,7 @@ export function createViewer({
     tiles.push(plane)
   }
 
-  // Resource-bar fill colour by fill ratio (Foundry-ish): green → amber → red.
+  // Resource-bar fill color by fill ratio (Foundry-ish): green → amber → red.
   function barFillColor(ratio: number): number {
     return ratio > 0.5 ? 0x4ade80 : ratio > 0.25 ? 0xfacc15 : 0xf87171
   }
@@ -2222,7 +2222,7 @@ export function createViewer({
       // artScale (Dynamic Ring `ring.subject.scale`) sizes the portrait within its ring.
       const aScale2d = t.artScale ?? 1
       // Pre-load: stretch to the cell (fill). Re-scaled with `fit` in the texture callback below
-      // once the natural size is known. Untextured (colour) tokens keep this footprint.
+      // once the natural size is known. Untextured (color) tokens keep this footprint.
       art.scale.set(tw * (t.textureScaleX ?? 1) * aScale2d, th * Math.abs(t.textureScaleY ?? 1) * aScale2d, 1)
       art.rotation.x = -Math.PI / 2
       // Token facing: after laying the quad flat, spin it in the ground plane about world-up.
@@ -2275,7 +2275,7 @@ export function createViewer({
     // Disposition-tinted base ring on the token's floor — a ring (not a disc) so the
     // floor/grid shows through. A child of the group, positioned relative to elevation.
     // Non-uniform (tw×th) scale so a non-square token's ring hugs its footprint;
-    // `ringColor`/`ringBackground` carry the Dynamic Token Ring's own colours.
+    // `ringColor`/`ringBackground` carry the Dynamic Token Ring's own colors.
     if (t.ring !== false) {
       if (t.ringBackground != null) {
         const bg = new THREE.Mesh(
@@ -2308,7 +2308,7 @@ export function createViewer({
       sel.position.set(0, floorElevation - elevation + 0.6, 0)
       group.add(sel)
     }
-    // Target reticle — the viewer is aiming at this token (attack/spell) → a coloured
+    // Target reticle — the viewer is aiming at this token (attack/spell) → a colored
     // halo floating above it, readable from any angle.
     if (t.targeted) {
       const halo = new THREE.Mesh(
@@ -2368,7 +2368,7 @@ export function createViewer({
     const addBillboard = (tex: ThreeNS.Texture | null) => {
       if (!group.parent) return
       // A textured token is normally an ALPHA-TESTED OPAQUE cutout (transparent:false,
-      // alphaTest 0.5): it renders in the OPAQUE pass, writing colour+depth ONLY where the art
+      // alphaTest 0.5): it renders in the OPAQUE pass, writing color+depth ONLY where the art
       // is solid; its transparent background is discarded. That keeps it OUT of the transparent
       // pass — where it would share unreliable depth ordering with the (also-transparent) walls
       // and punch holes at its edges (#166).
@@ -2586,7 +2586,7 @@ export function createViewer({
       // chunky platform.
       const thickness = 6
       // Unlit like the map floor (see addLevel) so it isn't dimmed by the physical
-      // lights; use the scene's own background colour so it matches Foundry's canvas.
+      // lights; use the scene's own background color so it matches Foundry's canvas.
       const g = new THREE.Mesh(
         new THREE.BoxGeometry(bounds.width, thickness, bounds.height),
         new THREE.MeshBasicMaterial({ color: json?.background?.color ?? 0x3a4658 }),

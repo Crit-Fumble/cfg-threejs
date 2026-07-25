@@ -30,9 +30,9 @@ import {
  * view and the plugin render the exact same doc through the exact same code.
  *
  * Live vs stored, expressed as ctx policy (NOT forked logic): the live plugin reads the runtime slice,
- * per-player placeable visibility, and canvas.environment colours; this adapter renders ALL levels
+ * per-player placeable visibility, and canvas.environment colors; this adapter renders ALL levels
  * (renderAll — the host's own level picker slices client-side), gates visibility via stored `hidden` +
- * `viewerIsGm`, uses fallback ambient colours with its own tuned coefficients, and (GM only) reveals
+ * `viewerIsGm`, uses fallback ambient colors with its own tuned coefficients, and (GM only) reveals
  * secret doors. Terrain-ride (tokens/tiles following a heightmap) is deferred to the scene-view slice
  * (needs the core's terrain coordinate mapping to sample correctly) → terrainAt is null here for now.
  *
@@ -59,12 +59,12 @@ export interface FoundryTokenLike {
   lockRotation?: boolean
   /** Vision (Foundry `sight`) — a source's line-of-sight config for the offline vision cull. */
   sight?: { enabled?: boolean; range?: number; angle?: number }
-  /** Whether the token's actor has a player owner — drives the FRIENDLY→PARTY colour split.
+  /** Whether the token's actor has a player owner — drives the FRIENDLY→PARTY color split.
    * The offline snapshot rarely carries ownership, so this is optional; absent → FRIENDLY. */
   hasPlayerOwner?: boolean
   texture?: { src?: string | null; tint?: string | number; scaleX?: number; scaleY?: number; fit?: 'contain' | 'cover' | 'fill' | 'width' | 'height' }
   /** Dynamic Token Ring (Foundry `ring`). When enabled, the ring's subject texture replaces
-   * the raw art and its own colours/subject-scale drive the base ring + portrait sizing. */
+   * the raw art and its own colors/subject-scale drive the base ring + portrait sizing. */
   ring?: {
     enabled?: boolean
     colors?: { ring?: string | number | null; background?: string | number | null }
@@ -221,7 +221,7 @@ export function dispositionColor(d: number | undefined, hasPlayerOwner = false):
   return sharedDispositionColor(d, hasPlayerOwner)
 }
 
-/** Parse a Foundry colour ("#223044" or a number) to a numeric colour, or null. */
+/** Parse a Foundry color ("#223044" or a number) to a numeric color, or null. */
 function parseColor(c: unknown): number | null {
   if (typeof c === 'number') return c
   if (typeof c === 'string' && c[0] === '#') return parseInt(c.slice(1), 16)
@@ -292,7 +292,7 @@ export function convertFoundryScene(scene: FoundrySceneLike = {}, opts: FoundryS
     renderAll: true,
   }).filter((q) => Number.isFinite(q.elevation))
 
-  // ── Ambient + lights (fallback env colours + the adapter's tuned dimmer coefficients) ──
+  // ── Ambient + lights (fallback env colors + the adapter's tuned dimmer coefficients) ──
   const darkness = Math.max(0, Math.min(1, num(scene.environment?.darknessLevel)))
   const gl = scene.environment?.globalLight ?? scene.globalLight
   const globalLightOn = typeof gl === 'object' && gl !== null ? gl.enabled === true : gl === true
