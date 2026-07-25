@@ -1,0 +1,56 @@
+name: release
+
+# Build + publish @crit-fumble/threejs to GitHub Packages on `v*` tag push.
+#
+# Matches the release-pipeline contract used by the sibling cfg-* product
+# repos (cfg-core-server, cfg-core-browser, cfg-server-disrecord): tag
+# pushes are the canonical release trigger, manual `workflow_dispatch`
+# stays available for one-off rebuilds. Consumers pull from
+# `npm.pkg.github.com` via the `.npmrc` shipped here and in each
+# consumer.
+#
+# Test gate: `npm test` runs before publish so a broken `shared` build
+# can't land downstream (consumers pull this transitively via @crit-fumble/shared;
+# its own test suite, but the threejs render core is published-and-forget;
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to publish (e.g. v1.0.1). Only used for naming when run manually.'
+        required: true
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24'
+          registry-url: 'https://npm.pkg.github.com'
+          scope: '@crit-fumble'
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Test
+        run: npm test
+
+      # `prepublishOnly` runs `clean && build` so `dist/` is produced as
+      # part of the publish step itself. No separate build step needed.
+      - name: Publish to GitHub Packages
+        run: npm publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
