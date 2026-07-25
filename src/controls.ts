@@ -147,10 +147,11 @@ export function createViewerControls(viewer: Viewer, opts: ViewerControlsOptions
   // viewer that opens straight into GM View starts on the GM's (north) side, not the default south.
   let seatAzimuth = mode === 'tabletop-gm' ? Math.PI : 0
   const PLAYER_HALF_ARC = Math.PI / 2 // players see a 180° arc (their half of the table); GM's side stays behind them
-  // The GM sits at π and may sweep a full ±π from there — the whole table, but with hard stops at the
-  // ends rather than looping round and round.
+  // The GM sits at π (north) and may sweep the WHOLE table — but bounded, so the camera can't wind
+  // round and round forever. Note the range must be expressed within [-π, π]: OrbitControls normalises
+  // min/max into that window, so a literal [0, 2π] collapses to [0, 0] and pins the GM facing south.
   const seatRangeFor = (m: ViewerCameraMode) =>
-    m === 'tabletop-gm' ? { min: 0, max: 2 * Math.PI } : { min: -PLAYER_HALF_ARC, max: PLAYER_HALF_ARC }
+    m === 'tabletop-gm' ? { min: -Math.PI, max: Math.PI } : { min: -PLAYER_HALF_ARC, max: PLAYER_HALF_ARC }
   const applySeatPosition = () => {
     const { cx, cz, span } = frame()
     const dist = span * 0.9
