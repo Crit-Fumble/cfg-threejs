@@ -1,0 +1,60 @@
+{
+  "name": "@crit-fumble/threejs",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Framework-agnostic three.js render core for Crit-Fumble surfaces (PlayTable + the FoundryVTT plugin). Pure logic — THREE is host-injected, no runtime three import, no @crit-fumble/shared dep.",
+  "license": "AGPL-3.0-only",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Crit-Fumble/cfg-threejs.git"
+  },
+  "homepage": "https://github.com/Crit-Fumble/cfg-threejs",
+  "bugs": "https://github.com/Crit-Fumble/cfg-threejs/issues",
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com",
+    "access": "public"
+  },
+  "files": [
+    "dist"
+  ],
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./*": {
+      "types": "./dist/*.d.ts",
+      "default": "./dist/*.js"
+    }
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "tsc",
+    "clean": "rimraf dist",
+    "test": "jest --config jest.config.cjs",
+    "test:viewer": "node tests/vtt-viewer-core.browser.mjs && node tests/vtt-viewer-core-extended.browser.mjs && node tests/vtt-adapter-foundry.browser.mjs && node tests/vtt-controls.browser.mjs",
+    "prepublishOnly": "npm run clean && npm run build"
+  },
+  "peerDependencies": {
+    "three": ">=0.150.0"
+  },
+  "peerDependenciesMeta": {
+    "three": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.59.1",
+    "@swc/core": "^1.15.33",
+    "@swc/jest": "^0.2.37",
+    "@types/jest": "^29.5.14",
+    "@types/three": "^0.184.1",
+    "esbuild": "^0.28.1",
+    "jest": "^29.7.0",
+    "rimraf": "^6.1.2",
+    "three": "^0.184.0",
+    "typescript": "^5.9.3"
+  }
+}
