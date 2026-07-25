@@ -1,0 +1,48 @@
+name: test
+
+# Push/PR gate for @crit-fumble/threejs.
+#
+# This repo previously had NO push or PR workflow at all — `release.yml` was the only automation,
+# it ran on tag push only, and it ran `npm test` (jest) alone. The 8 headless-browser suites under
+# `tests/*.browser.mjs` therefore executed nowhere automated, and they are the ONLY tests that can
+# catch a whole class of render-core bug: three.js normalises `min/maxAzimuthAngle` into [-π, π] and
+# captures the orbit frame from `camera.up` inside the OrbitControls constructor, so both failures
+# live in real three behaviour that a mocked orbit reproduces incorrectly. Two camera regressions
+# reached a published package that way.
+#
+# So: everything a release gates on runs here first, on every push and PR.
+
+on:
+  push:
+    branches: ['main']
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24'
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      # The browser suites resolve Chrome via tests/shared/chrome.mjs, which falls back to
+      # Playwright's own bundled build when no local Chrome-for-Testing exists — that fallback is
+      # what makes them runnable off the maintainer's laptop, so the browser must be installed.
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Browser render-core tests
+        run: npm run test:viewer

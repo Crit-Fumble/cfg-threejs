@@ -180,6 +180,15 @@ export function createViewerControls(viewer: Viewer, opts: ViewerControlsOptions
 
   // ── OrbitControls: one for the perspective camera (2D/3D share the 3D one for
   // topdown/free), one for the ortho camera (2D). ──────────────────────────────────
+  // OrbitControls captures its orbit FRAME from `camera.up` once, in its constructor
+  // (`_quat = setFromUnitVectors(object.up, +Y)`) — it never recomputes it. Top-Down parks a
+  // HORIZONTAL up on the perspective camera (0,0,-1; required when looking straight down), so a
+  // controller built while the camera sits in Top-Down would measure every azimuth in a tilted
+  // frame — tabletop seats and character facing silently break, with nothing to hint why. Restore
+  // world-up BEFORE constructing so the frame is always upright; the modes that need a different
+  // up (Top-Down) set it themselves afterwards, and their polar angle is pinned so the orbit frame
+  // never enters into it. Hosts previously had to know this and work around it externally.
+  viewer.camera.up.set(0, 1, 0)
   const orbit3d = new OrbitControls(viewer.camera, dom)
   orbit3d.enableDamping = true
   orbit3d.dampingFactor = 0.08

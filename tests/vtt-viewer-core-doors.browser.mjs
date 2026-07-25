@@ -23,12 +23,11 @@ import { chromium } from '@playwright/test'
 import * as esbuild from 'esbuild'
 import { dirname, join } from 'path'
 import { fileURLToPath } from 'url'
+import { resolveChrome, CHROME_ARGS } from './shared/chrome.mjs'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const CORE = join(__dirname, '../src/core.ts')
-const CHROME =
-  process.env.REVIEW_CHROME ||
-  '/Users/personal/Library/Caches/ms-playwright/chromium-1228/chrome-mac-x64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing'
+const CHROME = resolveChrome()
 
 // 100px segments on a simple floor. Door hinge at (x1,y1).
 const SCENE = {
@@ -64,7 +63,7 @@ const built = await esbuild.build({
   legalComments: 'none',
 })
 
-const browser = await chromium.launch({ headless: true, executablePath: CHROME, args: ['--ignore-gpu-blocklist', '--enable-unsafe-swiftshader', '--enable-webgl'] })
+const browser = await chromium.launch({ headless: true, executablePath: CHROME, args: CHROME_ARGS })
 const page = await (await browser.newContext({ viewport: { width: 1000, height: 800 } })).newPage()
 page.on('pageerror', (e) => fail('pageerror: ' + e.message))
 try {

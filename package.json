@@ -34,7 +34,9 @@
     "build": "tsc",
     "clean": "rimraf dist",
     "test": "jest --config jest.config.cjs",
-    "test:viewer": "node tests/vtt-viewer-core.browser.mjs && node tests/vtt-viewer-core-extended.browser.mjs && node tests/vtt-adapter-foundry.browser.mjs && node tests/vtt-controls.browser.mjs",
+    "//test:viewer": "GLOBBED on purpose: this script used to name 4 files by hand while 8 existed, so half the browser suite ran nowhere. A new tests/*.browser.mjs is picked up automatically.",
+    "test:viewer": "for f in tests/*.browser.mjs; do echo \"── $f\"; node \"$f\" || exit 1; done",
+    "test:all": "npm run typecheck && npm test && npm run test:viewer",
     "prepublishOnly": "npm run clean && npm run build"
   },
   "peerDependencies": {

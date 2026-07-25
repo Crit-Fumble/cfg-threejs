@@ -10,13 +10,12 @@ import { chromium } from '@playwright/test'
 import * as esbuild from 'esbuild'
 import { dirname, join } from 'path'
 import { fileURLToPath } from 'url'
+import { resolveChrome, CHROME_ARGS } from './shared/chrome.mjs'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const CORE = join(__dirname, '../src/core.ts')
 const CONTROLS = join(__dirname, '../src/controls.ts')
-const CHROME =
-  process.env.REVIEW_CHROME ||
-  '/Users/personal/Library/Caches/ms-playwright/chromium-1228/chrome-mac-x64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing'
+const CHROME = resolveChrome()
 
 const log = (...a) => console.log('[controls-test]', ...a)
 const fail = (m) => {
@@ -36,7 +35,7 @@ const built = await esbuild.build({
   legalComments: 'none',
 })
 
-const browser = await chromium.launch({ headless: true, executablePath: CHROME, args: ['--ignore-gpu-blocklist', '--enable-unsafe-swiftshader', '--enable-webgl'] })
+const browser = await chromium.launch({ headless: true, executablePath: CHROME, args: CHROME_ARGS })
 const page = await (await browser.newContext({ viewport: { width: 1000, height: 800 } })).newPage()
 page.on('pageerror', (e) => {
   if (!/setPointerCapture/.test(e.message)) fail('pageerror: ' + e.message) // synthetic events lack a real pointer
@@ -141,6 +140,43 @@ try {
     c3.setMode('topdown')
     results.charSubjectRestored = viewer.tokens.get('hero').visible === true
     c3.dispose()
+
+    // ── Tabletop SEATS: the GM sits NORTH across the table, players stay in their southern
+    // half. Regression guard for the azimuth-collapse class: OrbitControls normalises
+    // min/maxAzimuthAngle into [-π, π], so a seat arc written as [0, 2π] silently collapses to
+    // [0, 0] and pins the GM facing SOUTH. That bug shipped twice (once in cfg-shared, then
+    // re-introduced by the cfg-threejs extraction snapshot) with no test to catch it. Only the
+    // REAL OrbitControls reproduces it — the normalisation lives inside three, so a mocked
+    // orbit would pass either way.
+    const c4 = createViewerControls(viewer, { THREE, OrbitControls, getBounds: () => bounds, mode: 'tabletop-gm', allowedModes: ['tabletop', 'tabletop-gm'] })
+    const cz = bounds.height / 2
+    // The invariant, checked for BOTH seats: a finite arc must be expressed within [-π, π].
+    const gmR = c4.getSeatRange()
+    c4.setMode('tabletop')
+    const partyR = c4.getSeatRange()
+    const withinPi = (r) => r.min >= -Math.PI - 1e-9 && r.max <= Math.PI + 1e-9 && r.max > r.min
+    results.seatRanges = { gm: [gmR.min, gmR.max], party: [partyR.min, partyR.max] }
+    results.seatRangesWithinPi = withinPi(gmR) && withinPi(partyR)
+    // The GM seat must SURVIVE the orbit clamp: entering GM view seats the camera north, and
+    // update() must not yank it back round to the party's side.
+    c4.setMode('tabletop-gm')
+    c4.orbit3d.update()
+    c4.orbit3d.update()
+    // Assert the ANGLE, not just the camera position: with damping the position lags a frame
+    // behind the clamp, so a position-only check passes even when the seat has been collapsed.
+    results.gmSeat = c4.getSeat()
+    results.gmSeatsNorth = Math.abs(c4.getSeat()) > Math.PI / 2 && viewer.camera.position.z < cz - 1
+    // ...and the GM may still sweep round the table to a side seat.
+    c4.setSeat(-Math.PI / 2)
+    c4.orbit3d.update()
+    results.gmSweptToSide = Math.abs(c4.getSeat() - -Math.PI / 2) < 0.2
+    // The PARTY seat is genuinely bounded: asking for the GM's north seat lands on the ±90° stop.
+    c4.setMode('tabletop')
+    c4.setSeat(Math.PI)
+    c4.orbit3d.update()
+    results.partySeat = c4.getSeat()
+    results.partyClampedOutOfGmSide = Math.abs(c4.getSeat()) <= Math.PI / 2 + 0.05 && viewer.camera.position.z > cz - 1
+    c4.dispose()
     return results
   })
 
@@ -160,7 +196,11 @@ try {
   if (!out.charFirstPerson) fail('wheel-in did not dolly the character camera to first person')
   if (!out.charSubjectHiddenInFirst) fail('subject body should be hidden in first person')
   if (!out.charSubjectRestored) fail('leaving character view did not restore the subject body')
-  if (!process.exitCode) log('PASS — modes+framing, gating, selection, focus pivot, and character view all verified')
+  if (!out.seatRangesWithinPi) fail(`a seat arc is not expressed within [-π, π] (OrbitControls collapses it): ${JSON.stringify(out.seatRanges)}`)
+  if (!out.gmSeatsNorth) fail(`GM seat did not survive the orbit clamp — camera is not north of centre (seat ${out.gmSeat})`)
+  if (!out.gmSweptToSide) fail(`GM could not sweep to the -90° side seat (seat ${out.gmSeat})`)
+  if (!out.partyClampedOutOfGmSide) fail(`party seat was NOT clamped out of the GM's side (seat ${out.partySeat})`)
+  if (!process.exitCode) log('PASS — modes+framing, gating, selection, focus pivot, character view, and tabletop seats all verified')
 } catch (e) {
   fail(e?.stack || e?.message || String(e))
 } finally {

@@ -9,9 +9,13 @@ name: release
 # `npm.pkg.github.com` via the `.npmrc` shipped here and in each
 # consumer.
 #
-# Test gate: `npm test` runs before publish so a broken `shared` build
-# can't land downstream (consumers pull this transitively via @crit-fumble/shared;
-# its own test suite, but the threejs render core is published-and-forget;
+# Test gate: typecheck + unit tests + the headless-browser render-core suites all run before
+# publish, so a broken viewer can't land downstream. Consumers pull this transitively via
+# @crit-fumble/shared, and a bad publish then needs a version bump in every surface to undo —
+# a publish is effectively irreversible, so the gate here is the full suite, not just jest.
+# The browser suites are the only ones that catch real-three camera behaviour (azimuth
+# normalisation, the constructor-captured orbit frame); two camera regressions shipped while
+# they ran nowhere automated. `test.yml` runs the same set on every push/PR.
 
 on:
   push:
@@ -42,11 +46,17 @@ jobs:
       - name: Install
         run: npm ci
 
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
       - name: Typecheck
         run: npm run typecheck
 
       - name: Test
         run: npm test
+
+      - name: Browser render-core tests
+        run: npm run test:viewer
 
       # `prepublishOnly` runs `clean && build` so `dist/` is produced as
       # part of the publish step itself. No separate build step needed.
