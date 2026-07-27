@@ -115,9 +115,11 @@ export interface FoundryLightLike {
   y?: number
   elevation?: number
   hidden?: boolean
+  /** Cone direction in document degrees (0 = canvas-south) — meaningful when config.angle < 360. */
+  rotation?: number
   /** Native per-placeable Level membership (`document.levels`); empty = all levels. */
   levels?: string[]
-  config?: { dim?: number; bright?: number; color?: string | number; luminosity?: number }
+  config?: { dim?: number; bright?: number; color?: string | number; luminosity?: number; angle?: number; alpha?: number }
 }
 
 export interface FoundryTileLike {
@@ -129,6 +131,8 @@ export interface FoundryTileLike {
   height?: number
   elevation?: number
   alpha?: number
+  /** In-plane rotation in document degrees (clockwise on the canvas). */
+  rotation?: number
   hidden?: boolean
   texture?: { src?: string | null }
   /** Native per-placeable Level membership (`document.levels`); empty = all levels. */
@@ -141,6 +145,8 @@ export interface FoundryNoteLike {
   _id?: string
   x?: number
   y?: number
+  /** Pin elevation in grid units (Foundry `note.elevation`). */
+  elevation?: number
   iconSize?: number
   texture?: { src?: string | null }
   /** Linked JournalEntry id (Foundry `note.entryId`) — the pin opens this entry. */
@@ -365,7 +371,7 @@ export function convertFoundryScene(scene: FoundrySceneLike = {}, opts: FoundryS
 
   // ── Tiles + notes ──
   const tiles = buildTilesJson(toArray(scene.tiles), { pxPerUnit, docInSlice: () => true, assetUrl, terrainAt: null })
-  const notes = buildNotesJson(toArray(scene.notes), assetUrl)
+  const notes = buildNotesJson(toArray(scene.notes), assetUrl, { pxPerUnit })
   // Drawings (annotations): strip GM-hidden ones for players (position/text leak).
   const drawings = buildDrawingsJson(toArray(scene.drawings) as ProducerDrawing[], { docInSlice: (d) => isGm || !d.hidden })
   // Measured templates (AoE): distance in grid units → px; strip GM-hidden for players.

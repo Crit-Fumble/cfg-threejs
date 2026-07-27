@@ -197,6 +197,12 @@ export interface ViewerLight {
   color?: number
   radius?: number
   intensity?: number
+  /** Full cone angle in DEGREES (Foundry `config.angle`), present only when < 360 —
+   * the light renders as a spot cone instead of an omni point (dt#183 G4). */
+  angle?: number
+  /** Cone direction in Foundry document degrees (0 = canvas-south, i.e. +z here),
+   * only meaningful alongside `angle`. */
+  rotation?: number
   castShadow?: boolean
   /** Shadow-camera near plane (world px). Default 1; a host may want it proportional
    * to its own grid scale (e.g. gridSizePx * 0.2) to reduce shadow acne. */
@@ -226,6 +232,9 @@ export interface ViewerNote {
   entryId?: string
   /** A short label shown under the pin (Foundry `note.text`, usually the entry title). */
   text?: string
+  /** Pin elevation in world px (Foundry `note.elevation` × pxPerUnit) — the pin rides
+   * its floor instead of sticking to ground level (dt#183 tail). */
+  elevation?: number
   /** Native Foundry Level-doc ids this note is restricted to (see `ViewerWall.levelIds`). */
   levelIds?: string[]
 }
@@ -240,6 +249,9 @@ export interface ViewerTile {
   texture?: string | null
   alpha?: number
   color?: number
+  /** In-plane rotation in Foundry document degrees (clockwise on the canvas).
+   * Absent/0 = axis-aligned (dt#183 tail). */
+  rotation?: number
   /** Native Foundry Level-doc ids this tile is restricted to (see `ViewerWall.levelIds`). */
   levelIds?: string[]
 }
@@ -974,8 +986,7 @@ export function createViewer({
     }
     ambientLights.length = 0
     for (const l of lights) {
-      scene.remove(l)
-      l.dispose?.()
+      removeLight(l)
     }
     lights.length = 0
     for (const n of notes) {
@@ -1078,8 +1089,35 @@ export function createViewer({
     ambientLights.push(sun, sun.target)
   }
 
+  /** Remove + dispose one scene light. A spot cone (dt#183 G4) also carries a
+   * `target` Object3D in the scene — removing only the light would leak it on
+   * every light-budget rebuild / quality change. dispose() frees the shadow-map
+   * render target — the only path that does. */
+  function removeLight(l: ThreeNS.Light) {
+    scene.remove(l)
+    const spot = l as ThreeNS.SpotLight
+    if ((spot as { isSpotLight?: boolean }).isSpotLight && spot.target) scene.remove(spot.target)
+    ;(l as { dispose?: () => void }).dispose?.()
+  }
+
   function addPointLight(l: ViewerLight, allowShadow: boolean) {
-    const light = new THREE.PointLight(l.color ?? 0xffffff, l.intensity ?? 1, l.radius ?? 0, 0)
+    // A directional light (Foundry config.angle < 360) is a SPOT CONE aimed along the
+    // doc's rotation; everything else stays an omni point (dt#183 G4). Foundry rotation
+    // 0 points canvas-south: direction angle = rotation + 90° in canvas coords (x right,
+    // y down) → dx = -sin(R), dy(canvas) = cos(R) → viewer (x, ·, z=dy). The target sits
+    // on the floor one radius out, so an elevated cone tilts down like the 2D wedge.
+    const isCone = Number.isFinite(Number(l.angle)) && Number(l.angle) > 0 && Number(l.angle) < 360
+    let light: ThreeNS.PointLight | ThreeNS.SpotLight
+    if (isCone) {
+      const spot = new THREE.SpotLight(l.color ?? 0xffffff, l.intensity ?? 1, l.radius ?? 0, (Number(l.angle) * Math.PI) / 360, 0.3, 0)
+      const rad = ((Number(l.rotation) || 0) * Math.PI) / 180
+      const reach = l.radius || 1000
+      spot.target.position.set((l.x || 0) - Math.sin(rad) * reach, 0, (l.y || 0) + Math.cos(rad) * reach)
+      scene.add(spot.target)
+      light = spot
+    } else {
+      light = new THREE.PointLight(l.color ?? 0xffffff, l.intensity ?? 1, l.radius ?? 0, 0)
+    }
     light.position.set(l.x || 0, l.elevation || 0, l.y || 0)
     if (l.castShadow && shadowsOn && allowShadow) {
       light.castShadow = true
@@ -1103,8 +1141,7 @@ export function createViewer({
    */
   function applyLightBudget() {
     for (const l of lights) {
-      scene.remove(l)
-      ;(l as unknown as { dispose?: () => void }).dispose?.()
+      removeLight(l)
     }
     lights.length = 0
     const budget = Math.min(preset.maxLights, uniformLightCeiling)
@@ -1803,7 +1840,8 @@ export function createViewer({
     sprite.renderOrder = 10 // stay visible above geometry
     sprite.center.set(0.5, 0) // anchor the TIP (bottom) at the note position
     sprite.scale.set(size, size, 1)
-    sprite.position.set(n.x || 0, 1, n.y || 0)
+    // Pin rides its floor (dt#183 tail): elevation is already world px from the producer.
+    sprite.position.set(n.x || 0, (n.elevation || 0) + 1, n.y || 0)
     sprite.visible = notesVisible
     if (n.texture) {
       getTexture(n.texture, (iconTex) => {
@@ -2116,6 +2154,11 @@ export function createViewer({
     }
     const plane = new THREE.Mesh(geo, mat)
     plane.rotation.x = -Math.PI / 2
+    // In-plane spin (dt#183 tail): with Euler XYZ, rotation.z spins the geometry in its
+    // own plane BEFORE the x-tip lays it flat. Foundry rotation is clockwise on the
+    // canvas (y down); the plane's local +y maps to canvas-up after the tip, so the
+    // canvas-clockwise spin is -z here.
+    if (t.rotation) plane.rotation.z = (-(t.rotation || 0) * Math.PI) / 180
     // A Tile's (x,y) is already its center (default texture anchor 0.5/0.5) — don't
     // add half-size, that double-shifts it off-grid. Tiles keep their real elevation in
     // BOTH modes: straight-down, an overhead tile still covers what's under it (roofs).

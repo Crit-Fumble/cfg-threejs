@@ -208,6 +208,8 @@ export interface ProducerTile {
   height?: number
   elevation?: number
   alpha?: number
+  /** In-plane rotation in document degrees (clockwise on the canvas). */
+  rotation?: number
   hidden?: boolean
   texture?: { src?: string | null }
   levels?: string[]
@@ -256,6 +258,8 @@ export function buildTilesJson(docs: ProducerTile[] | undefined, ctx: { pxPerUni
         alpha: Number.isFinite(Number(d.alpha)) ? Number(d.alpha) : 1,
         color: elev > 0 ? 0x7a6a52 : 0x515b6b, // no texture → tint by elevation
       }
+      // In-plane rotation (dt#183 tail) — omitted when 0 so axis-aligned output stays byte-identical.
+      if (num(d.rotation) !== 0) tile.rotation = num(d.rotation)
       const levelIds = levelMembership(d.levels)
       if (levelIds) tile.levelIds = levelIds
       out.push(tile)
@@ -267,13 +271,14 @@ export function buildTilesJson(docs: ProducerTile[] | undefined, ctx: { pxPerUni
 }
 
 export interface ProducerNote {
-  document?: { id?: string; _id?: string; x?: number; y?: number; iconSize?: number; texture?: { src?: string | null }; levels?: string[]; entryId?: string; text?: string }
+  document?: { id?: string; _id?: string; x?: number; y?: number; elevation?: number; iconSize?: number; texture?: { src?: string | null }; levels?: string[]; entryId?: string; text?: string }
   center?: { x?: number; y?: number }
   // stored path passes the doc directly (no placeable wrapper)
   id?: string
   _id?: string
   x?: number
   y?: number
+  elevation?: number
   iconSize?: number
   texture?: { src?: string | null }
   levels?: string[]
@@ -282,8 +287,9 @@ export interface ProducerNote {
 }
 
 /** Map note pins → flat billboard markers. Accepts either a live Note placeable ({center, document})
- * or a bare note doc (stored). */
-export function buildNotesJson(notes: ProducerNote[] | undefined, assetUrl: (s: string) => string | null): ViewerNote[] {
+ * or a bare note doc (stored). `opts.pxPerUnit` scales the doc's elevation (grid units) into world px
+ * so the pin rides its floor (dt#183 tail) — omitted, pins stay at ground level (legacy callers). */
+export function buildNotesJson(notes: ProducerNote[] | undefined, assetUrl: (s: string) => string | null, opts?: { pxPerUnit?: number }): ViewerNote[] {
   const out: ViewerNote[] = []
   for (const note of notes || []) {
     try {
@@ -294,6 +300,8 @@ export function buildNotesJson(notes: ProducerNote[] | undefined, assetUrl: (s: 
       const marker: ViewerNote = { id: doc.id ?? doc._id, x, y, size: doc.iconSize || 50, texture: src ? assetUrl(src) : null }
       if (doc.entryId) marker.entryId = doc.entryId
       if (doc.text) marker.text = doc.text
+      const elevation = Number(doc.elevation)
+      if (opts?.pxPerUnit && Number.isFinite(elevation) && elevation !== 0) marker.elevation = elevation * opts.pxPerUnit
       const levelIds = levelMembership(doc.levels)
       if (levelIds) marker.levelIds = levelIds
       out.push(marker)
@@ -554,9 +562,11 @@ export interface ProducerLight {
   x?: number
   y?: number
   elevation?: number
+  /** Cone direction in document degrees (0 = canvas-south) — meaningful when config.angle < 360. */
+  rotation?: number
   hidden?: boolean
   levels?: string[]
-  config?: { dim?: number; bright?: number; color?: string | number; luminosity?: number }
+  config?: { dim?: number; bright?: number; color?: string | number; luminosity?: number; angle?: number; alpha?: number }
 }
 export interface ProducerTokenLight {
   x?: number
@@ -610,7 +620,7 @@ export function buildLightsJson(lightDocs: ProducerLight[] | undefined, tokenDoc
   // so the plugin's call site keeps its shadows with no capLights step. A host that DOES call capLights
   // (the stored adapter) has these re-assigned biggest-first — capLights overrides this.
   let shadowBudget = shadows ? 4 : 0
-  const addPointLight = (cfg: ProducerLight['config'], x: number, y: number, elevPx: number, meta?: { id?: string; levelIds?: string[] }) => {
+  const addPointLight = (cfg: ProducerLight['config'], x: number, y: number, elevPx: number, meta?: { id?: string; levelIds?: string[]; rotation?: number }) => {
     if (!cfg) return
     const dim = num(cfg.dim)
     const bright = num(cfg.bright)
@@ -619,16 +629,27 @@ export function buildLightsJson(lightDocs: ProducerLight[] | undefined, tokenDoc
     const radius = Math.max(dim, bright) * pxPerUnit || size * 4
     const castShadow = shadowBudget > 0
     if (castShadow) shadowBudget--
+    // Light translucency (dt#183 G4): Foundry `config.alpha` defaults to 0.5, so scale
+    // RELATIVE to that default — an untouched light keeps exactly its current intensity
+    // (scale 1), a GM-dimmed/boosted alpha lands proportionally. Capped ×2.
+    const alphaScale = cfg.alpha != null && Number.isFinite(Number(cfg.alpha)) ? Math.min(2, Math.max(0, Number(cfg.alpha)) / 0.5) : 1
     const light: ViewerLight = {
       x,
       y,
       elevation: elevPx + size * 0.6,
       color,
       radius,
-      intensity: 1.3 + num(cfg.luminosity),
+      intensity: (1.3 + num(cfg.luminosity)) * alphaScale,
       castShadow,
       shadowNear: size * 0.2,
       shadowNormalBias: size * 0.05,
+    }
+    // Directional cone (dt#183 G4): a non-360 config.angle renders as a spot aimed along
+    // the doc's rotation. Emitted only when constrained, keeping omni output byte-identical.
+    const angle = Number(cfg.angle)
+    if (Number.isFinite(angle) && angle > 0 && angle < 360) {
+      light.angle = angle
+      light.rotation = Number(meta?.rotation) || 0
     }
     // id + native Level membership (scene lights only — token lights are positional and slice with
     // their token's elevation). Both omitted unless present, keeping the common output byte-identical.
@@ -639,7 +660,7 @@ export function buildLightsJson(lightDocs: ProducerLight[] | undefined, tokenDoc
   for (const d of lightDocs || []) {
     try {
       if (d?.hidden || !ctx.docInSlice(d)) continue
-      addPointLight(d.config, num(d.x), num(d.y), num(d.elevation) * pxPerUnit, { id: d.id ?? d._id, levelIds: levelMembership(d.levels) })
+      addPointLight(d.config, num(d.x), num(d.y), num(d.elevation) * pxPerUnit, { id: d.id ?? d._id, levelIds: levelMembership(d.levels), rotation: d.rotation })
     } catch {
       /* skip */
     }

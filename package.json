@@ -1,6 +1,6 @@
 {
   "name": "@crit-fumble/threejs",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "type": "module",
   "description": "Framework-agnostic three.js render core for Crit-Fumble surfaces (PlayTable + the FoundryVTT plugin). Pure logic — THREE is host-injected, no runtime three import, no @crit-fumble/shared dep.",
   "license": "AGPL-3.0-only",

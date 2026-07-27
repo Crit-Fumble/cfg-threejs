@@ -232,6 +232,65 @@ describe('convertFoundryScene (full parity)', () => {
     expect(tokenLight).toMatchObject({ color: 0xffce8a, radius: 520 })
   })
 
+  // dt#183 G4 + tail — directional/transparent lights, tile rotation, note elevation.
+  describe('scene-schema tail (dt#183)', () => {
+    const TAIL_SCENE = {
+      grid: { size: 100, distance: 5 },
+      width: 2000,
+      height: 2000,
+      lights: [
+        { _id: 'cone', x: 500, y: 500, rotation: 90, config: { dim: 20, bright: 10, angle: 90, alpha: 0.25 } },
+        { _id: 'omni', x: 600, y: 600, config: { dim: 20, bright: 10 } },
+        { _id: 'full', x: 700, y: 700, rotation: 45, config: { dim: 20, bright: 10, angle: 360, alpha: 0.5 } },
+      ],
+      tiles: [
+        { _id: 'spun', x: 1100, y: 1600, width: 320, height: 320, rotation: 45 },
+        { _id: 'straight', x: 1200, y: 1700, width: 320, height: 320, rotation: 0 },
+      ],
+      notes: [
+        { _id: 'raised', x: 100, y: 100, elevation: 10 },
+        { _id: 'ground', x: 200, y: 200 },
+      ],
+    }
+
+    it('a non-360 config.angle emits a cone (angle + rotation); 360/omni stays byte-identical', () => {
+      const { scene } = convertFoundryScene(TAIL_SCENE, { resolveUrl })
+      const cone = scene.lights?.find((l) => l.id === 'cone')
+      expect(cone).toMatchObject({ angle: 90, rotation: 90 })
+      const omni = scene.lights?.find((l) => l.id === 'omni')
+      expect(omni).not.toHaveProperty('angle')
+      expect(omni).not.toHaveProperty('rotation')
+      const full = scene.lights?.find((l) => l.id === 'full')
+      expect(full).not.toHaveProperty('angle')
+    })
+
+    it('config.alpha scales intensity relative to the Foundry default 0.5 — absent/default = unchanged', () => {
+      const { scene } = convertFoundryScene(TAIL_SCENE, { resolveUrl })
+      const cone = scene.lights?.find((l) => l.id === 'cone')
+      const omni = scene.lights?.find((l) => l.id === 'omni')
+      const full = scene.lights?.find((l) => l.id === 'full')
+      expect(omni?.intensity).toBeCloseTo(1.3) // no alpha → scale 1
+      expect(full?.intensity).toBeCloseTo(1.3) // alpha 0.5 = the default → scale 1
+      expect(cone?.intensity).toBeCloseTo(0.65) // alpha 0.25 → half the default
+    })
+
+    it('tile rotation is carried in degrees; 0/absent stays off the wire', () => {
+      const { scene } = convertFoundryScene(TAIL_SCENE, { resolveUrl })
+      const spun = scene.tiles?.find((t) => t.id === 'spun')
+      expect(spun?.rotation).toBe(45)
+      const straight = scene.tiles?.find((t) => t.id === 'straight')
+      expect(straight).not.toHaveProperty('rotation')
+    })
+
+    it('note elevation converts grid units → world px (pxPerUnit); ground notes stay unset', () => {
+      const { scene } = convertFoundryScene(TAIL_SCENE, { resolveUrl })
+      const raised = scene.notes?.find((n) => n.id === 'raised')
+      expect(raised?.elevation).toBe(10 * 20) // 100px grid / 5ft = 20 px per unit
+      const ground = scene.notes?.find((n) => n.id === 'ground')
+      expect(ground).not.toHaveProperty('elevation')
+    })
+  })
+
   it('maps door/window walls: kinds, door states, and the sight/move window signature', () => {
     const walls = [
       { _id: 'plain', c: [0, 0, 100, 0] },
