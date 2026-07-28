@@ -3,7 +3,7 @@
  * drive. Verifies the flat-plateau imprint, Q/E elevation (floored at 0), seat-relative WASD, and the
  * debounced commit, with a mock viewer host (no three, no DOM).
  */
-import { TerrainStampController, type TerrainStampHost } from '@/terrain-stamp'
+import { TerrainStampController, latticeAlignment, resampleHeightfield, type TerrainStampHost } from '@/terrain-stamp'
 
 const COLS = 25 // 24 grid squares, corner-per-square (1 sample/square)
 const ROWS = 25
@@ -84,5 +84,41 @@ describe('TerrainStampController', () => {
     ctrl.placeAt(0.5, 0.5)
     expect(levels).toContain(5)
     expect(placedFlags).toContain(true)
+  })
+})
+
+describe('latticeAlignment', () => {
+  it('flags the legacy square 80×80 field on a 59×55-square scene as OFF-lattice', () => {
+    const a = latticeAlignment(80, 80, 59, 55)
+    expect(a.aligned).toBe(false) // rounds to 1 spp but 79 ≠ 59 — the stamp would drift
+  })
+  it('accepts grid-aligned lattices at any density', () => {
+    expect(latticeAlignment(60, 56, 59, 55)).toEqual({ sppX: 1, sppY: 1, aligned: true })
+    expect(latticeAlignment(119, 111, 59, 55)).toEqual({ sppX: 2, sppY: 2, aligned: true })
+    expect(latticeAlignment(237, 221, 59, 55)).toEqual({ sppX: 4, sppY: 4, aligned: true })
+  })
+})
+
+describe('resampleHeightfield', () => {
+  it('preserves a constant field at any target density', () => {
+    const out = resampleHeightfield({ cols: 80, rows: 80, heights: new Array(80 * 80).fill(3) }, 119, 111)
+    expect(out).toHaveLength(119 * 111)
+    expect(out.every((h) => Math.abs(h - 3) < 1e-9)).toBe(true)
+  })
+  it('bilinearly interpolates between source samples', () => {
+    // 2×2 source: corners 0,10 / 20,30 — the centre of a 3×3 resample is the average.
+    const out = resampleHeightfield({ cols: 2, rows: 2, heights: [0, 10, 20, 30] }, 3, 3)
+    expect(out[4]).toBeCloseTo(15) // centre
+    expect(out[1]).toBeCloseTo(5) // top edge midpoint
+    expect(out[0]).toBe(0)
+    expect(out[8]).toBe(30) // far corner exact
+  })
+  it('keeps a sculpted plateau roughly in place across a rebuild (drift-fix path)', () => {
+    // Plateau on the right half of an 80-wide legacy field must stay on the right half at 119.
+    const src = new Array(80 * 80).fill(0)
+    for (let j = 0; j < 80; j++) for (let i = 40; i < 80; i++) src[j * 80 + i] = 5
+    const out = resampleHeightfield({ cols: 80, rows: 80, heights: src }, 119, 111)
+    expect(out[55 * 119 + 20]).toBeCloseTo(0) // left quarter untouched
+    expect(out[55 * 119 + 100]).toBeCloseTo(5) // right quarter keeps the plateau
   })
 })

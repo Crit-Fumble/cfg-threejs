@@ -12,6 +12,48 @@
  * the host renders in px, so we convert with pxPerUnit at the viewer boundary.
  */
 
+/**
+ * How a heightfield lattice relates to the scene's grid squares. The stamp REQUIRES an aligned
+ * lattice — an integer number of samples per square — because it paints whole squares by index
+ * arithmetic (`gx * sppX`). Fields created by older builds (e.g. a capped square 80×80 on a 59×55
+ * scene) are OFF-lattice: the rounded spp drifts the painted region further off target the further
+ * the square is from the origin. Hosts must gate the stamp on `aligned` and offer a rebuild
+ * (resampleHeightfield) instead of arming a tool that edits the wrong tiles.
+ */
+export function latticeAlignment(cols: number, rows: number, squaresW: number, squaresH: number): { sppX: number; sppY: number; aligned: boolean } {
+  const sppX = Math.max(1, Math.round((cols - 1) / Math.max(1, squaresW)))
+  const sppY = Math.max(1, Math.round((rows - 1) / Math.max(1, squaresH)))
+  const aligned = cols - 1 === sppX * squaresW && rows - 1 === sppY * squaresH
+  return { sppX, sppY, aligned }
+}
+
+/**
+ * Bilinearly resample a heightfield onto a new lattice (same world span — the field always covers
+ * the scene rect, so only the sample density changes). Preserves sculpted terrain when rebuilding an
+ * off-lattice or differently-dense field; heights stay in the caller's units.
+ */
+export function resampleHeightfield(src: { cols: number; rows: number; heights: number[] }, cols: number, rows: number): number[] {
+  const sc = Math.max(2, Math.floor(src.cols))
+  const sr = Math.max(2, Math.floor(src.rows))
+  const out = new Array(cols * rows)
+  for (let j = 0; j < rows; j++) {
+    const v = rows > 1 ? (j / (rows - 1)) * (sr - 1) : 0
+    const j0 = Math.min(sr - 2, Math.floor(v))
+    const fv = v - j0
+    for (let i = 0; i < cols; i++) {
+      const u = cols > 1 ? (i / (cols - 1)) * (sc - 1) : 0
+      const i0 = Math.min(sc - 2, Math.floor(u))
+      const fu = u - i0
+      const h00 = Number(src.heights[j0 * sc + i0]) || 0
+      const h10 = Number(src.heights[j0 * sc + i0 + 1]) || 0
+      const h01 = Number(src.heights[(j0 + 1) * sc + i0]) || 0
+      const h11 = Number(src.heights[(j0 + 1) * sc + i0 + 1]) || 0
+      out[j * cols + i] = h00 * (1 - fu) * (1 - fv) + h10 * fu * (1 - fv) + h01 * (1 - fu) * fv + h11 * fu * fv
+    }
+  }
+  return out
+}
+
 /** The subset of a 3D viewer the stamp needs. Both hosts already expose these (shared core methods). */
 export interface TerrainStampHost {
   /** Current terrain sample heights in PX (world units), or null if there's no field. */
