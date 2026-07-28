@@ -7,13 +7,16 @@ import type { Viewer } from './core.js'
  * FoundryVTT plugin behave identically (no per-host duplication). Like the core, THREE
  * and OrbitControls are INJECTED by the host — zero direct three/React/Foundry imports.
  *
- * Scheme — each mode is faithful to the genre it resembles:
+ * Scheme — each mode is faithful to the genre it resembles, under ONE Foundry-parity rule
+ * (verified against stock Foundry v14, owner 2026-07-28): WASD NEVER drives the camera — it
+ * belongs to token movement (the camera follows it only indirectly, in a character view). ARROWS
+ * are the keyboard camera, exactly like Foundry's 2D canvas pan.
  *   2D / Top-Down (Foundry): left = select · right drag = PAN · wheel = zoom · arrows = pan
  *   Free / GM seat (TaleSpire / Tabletop Simulator): left = select · right drag = ORBIT ·
- *                 MIDDLE drag = PAN · W A S D = ground-pan · Q / E = height down/up · wheel = zoom
- *   Party seat    ('tabletop', anchored): the eye stays ON the seat ring — arrows/WASD slide the
- *                 seat along its arc + tilt, right drag orbits the pinned table centre, wheel
- *                 dollies to centre with an edge-of-table floor. No translation, ever.
+ *                 MIDDLE drag = PAN · arrows = ground-pan · wheel = zoom
+ *   Party seat    ('tabletop', anchored): the eye stays ON the seat ring — arrows slide the seat
+ *                 along its arc (left/right) + tilt (up/down), right drag orbits the pinned table
+ *                 centre, wheel dollies to centre with an edge-of-table floor. No translation, ever.
  *   Character     (MMORPG, view-only): see below — right drag looks, wheel dollies 1st↔3rd person
  *
  * Character view ('character') is a VIEW-ONLY first/third-person camera anchored on a subject
@@ -124,7 +127,9 @@ export interface ViewerControls {
 }
 
 const ALL_MODES: ViewerCameraMode[] = ['2d', 'topdown', 'tabletop', 'tabletop-gm', 'free', 'character']
-const PAN_KEYS = ['arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'w', 'a', 's', 'd', 'q', 'e']
+// ARROWS ONLY — WASD/Q/E are never camera keys (Foundry parity: they belong to token movement /
+// host tools), so they must not be captured here or the host's own handlers never see them.
+const PAN_KEYS = ['arrowup', 'arrowdown', 'arrowleft', 'arrowright']
 const clamp = (v: number, lo: number, hi: number): number => (v < lo ? lo : v > hi ? hi : v)
 
 /**
@@ -295,7 +300,7 @@ export function createViewerControls(viewer: Viewer, opts: ViewerControlsOptions
     if (e.button === 2 && orbit3d.enableRotate && (mode === 'free' || mode === 'tabletop-gm')) refocusOrbit(e.clientX, e.clientY)
   }
 
-  // ── Keyboard: arrows pan (all modes), WASD fly + Q/E elevation (Free only) ────────
+  // ── Keyboard: arrows are the ONLY camera keys (pan/orbit per mode — Foundry parity) ────────
   const keys = new Set<string>()
   const onPointerEnter = () => (hovered = true)
   const onPointerLeave = () => {
@@ -337,17 +342,17 @@ export function createViewerControls(viewer: Viewer, opts: ViewerControlsOptions
     if (mode === 'tabletop') {
       // PARTY SEAT — anchored like character view, not a fly camera (Foundry parity: the plugin
       // maps the canvas-pan binds to turning, never translation). The eye stays on the seat ring
-      // around the pinned table-centre pivot: left/right (or A/D) slide the seat along its arc,
-      // up/down (or W/S) tilt the view; nothing here can walk the camera across the table to look
+      // around the pinned table-centre pivot: arrow left/right slide the seat along its arc,
+      // arrow up/down tilt the view; nothing here can walk the camera across the table to look
       // behind the GM's screen, regardless of zoom.
       const yaw = 0.02 // rad/frame while held — smooth seat slide
       const tilt = 0.015
       let dTheta = 0
       let dPhi = 0
-      if (keys.has('arrowleft') || keys.has('a')) dTheta -= yaw
-      if (keys.has('arrowright') || keys.has('d')) dTheta += yaw
-      if (keys.has('arrowup') || keys.has('w')) dPhi -= tilt
-      if (keys.has('arrowdown') || keys.has('s')) dPhi += tilt
+      if (keys.has('arrowleft')) dTheta -= yaw
+      if (keys.has('arrowright')) dTheta += yaw
+      if (keys.has('arrowup')) dPhi -= tilt
+      if (keys.has('arrowdown')) dPhi += tilt
       if (!dTheta && !dPhi) return false
       move.copy(viewer.camera.position).sub(orbit3d.target)
       seatSph.setFromVector3(move)
@@ -382,30 +387,14 @@ export function createViewerControls(viewer: Viewer, opts: ViewerControlsOptions
     if (keys.has('arrowdown')) move.addScaledVector(fwd, -1)
     if (keys.has('arrowright')) move.add(right)
     if (keys.has('arrowleft')) move.addScaledVector(right, -1)
-    if (mode === 'free' || mode === 'tabletop-gm') {
-      // WASD ground-pans on X/Z (fwd is already flattened to the ground plane above). The party
-      // seat ('tabletop') never reaches here — its keys orbit the seat above.
-      if (keys.has('w')) move.add(fwd)
-      if (keys.has('s')) move.addScaledVector(fwd, -1)
-      if (keys.has('d')) move.add(right)
-      if (keys.has('a')) move.addScaledVector(right, -1)
-    }
+    // No WASD/Q-E here — those are token-movement/host keys everywhere (Foundry parity, owner
+    // 2026-07-28); arrows above are the only keyboard camera in the roaming modes.
     let changed = false
     if (move.lengthSq()) {
       move.normalize().multiplyScalar(step)
       viewer.camera.position.add(move)
       orbit3d.target.add(move)
       changed = true
-    }
-    if (mode === 'free') {
-      let dy = 0
-      if (keys.has('e')) dy += step
-      if (keys.has('q')) dy -= step
-      if (dy) {
-        viewer.camera.position.y += dy
-        orbit3d.target.y += dy
-        changed = true
-      }
     }
     return changed
   }
