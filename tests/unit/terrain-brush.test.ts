@@ -82,3 +82,16 @@ describe('applyTerrainBrush', () => {
     expect(applyTerrainBrush(flat(4, 4), 4, 4, { mode: 'raise', u: NaN, v: 0.5 })).toEqual(flat(4, 4))
   })
 })
+
+describe('point mode (single-sample brush)', () => {
+  it('a half-cell radius dab from MID-CELL snaps to the nearest sample and changes exactly one', () => {
+    const cols = 21
+    const rows = 21
+    const flat = new Array(cols * rows).fill(0)
+    // u chosen so the centre lands between samples (u*(cols-1) = 10.45 → snaps to 10).
+    const out = applyTerrainBrush(flat, cols, rows, { mode: 'raise', u: 10.45 / 20, v: 10.45 / 20, radius: 0.5 / 21, strength: 2, profile: 'plateau' })
+    const changed = out.map((h, i) => (h !== 0 ? i : -1)).filter((i) => i >= 0)
+    expect(changed).toEqual([10 * cols + 10])
+    expect(out[10 * cols + 10]).toBeCloseTo(2) // full strength — not a rim-falloff graze
+  })
+})

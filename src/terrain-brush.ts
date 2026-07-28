@@ -84,9 +84,17 @@ export function applyTerrainBrush(heights: number[], cols: number, rows: number,
   if (!Number.isFinite(u) || !Number.isFinite(v)) return out
   // Corner-lattice (smooth heightmap): samples sit at the tile corners (i/(cols-1)), so the brush
   // centre in sample coordinates is u*(cols-1) — u=0.5 lands on the middle sample.
-  const ci = u * (cols - 1)
-  const cj = v * (rows - 1)
+  let ci = u * (cols - 1)
+  let cj = v * (rows - 1)
   const radiusCells = Math.max(0.5, (Number(opts?.radius) || 0.08) * Math.max(cols, rows))
+  // POINT MODE (owner 2026-07-28 — fine elevation tuning): at a half-cell-ish radius, snap the
+  // centre to the NEAREST lattice sample so the dab hits exactly that sample at full strength.
+  // Without the snap, a mid-cell cursor at minimum radius reaches only rim samples where the
+  // falloff is 0 — a dead dab.
+  if (radiusCells <= 0.75) {
+    ci = Math.round(ci)
+    cj = Math.round(cj)
+  }
   const strength = Number.isFinite(Number(opts?.strength)) ? Number(opts.strength) : 1
   const level = Number(opts?.level) || 0
   const shape: TerrainBrushShape = opts?.shape === 'square' ? 'square' : 'circle'
