@@ -170,12 +170,21 @@ try {
     c4.setSeat(-Math.PI / 2)
     c4.orbit3d.update()
     results.gmSweptToSide = Math.abs(c4.getSeat() - -Math.PI / 2) < 0.2
-    // The PARTY seat is genuinely bounded: asking for the GM's north seat lands on the ±90° stop.
+    // The PARTY seat is genuinely bounded: players sweep a 270° arc (±135°, matching the seat
+    // slider's travel), so asking for the GM's north seat lands on the ±135° stop — the reserved
+    // quarter around north (π ± 45°) stays out of reach.
     c4.setMode('tabletop')
     c4.setSeat(Math.PI)
     c4.orbit3d.update()
     results.partySeat = c4.getSeat()
-    results.partyClampedOutOfGmSide = Math.abs(c4.getSeat()) <= Math.PI / 2 + 0.05 && viewer.camera.position.z > cz - 1
+    const gmGap = Math.abs(Math.atan2(Math.sin(c4.getSeat() - Math.PI), Math.cos(c4.getSeat() - Math.PI)))
+    results.partyClampedOutOfGmSide = Math.abs(c4.getSeat()) <= (3 * Math.PI) / 4 + 0.05 && gmGap >= Math.PI / 4 - 0.05
+    // The party seat is ANCHORED: every translation route is off (middle-drag pan, cursor-dolly —
+    // both used to walk the pivot, and the seat with it, across the table), while the GM seat keeps
+    // its building-camera pan. (Keyboard orbit-not-translate is covered by the mode having no pan.)
+    results.partySeatAnchored = c4.orbit3d.enablePan === false && c4.orbit3d.zoomToCursor === false
+    c4.setMode('tabletop-gm')
+    results.gmSeatRoams = c4.orbit3d.enablePan === true && c4.orbit3d.zoomToCursor === true
     c4.dispose()
     return results
   })
@@ -200,6 +209,8 @@ try {
   if (!out.gmSeatsNorth) fail(`GM seat did not survive the orbit clamp — camera is not north of centre (seat ${out.gmSeat})`)
   if (!out.gmSweptToSide) fail(`GM could not sweep to the -90° side seat (seat ${out.gmSeat})`)
   if (!out.partyClampedOutOfGmSide) fail(`party seat was NOT clamped out of the GM's side (seat ${out.partySeat})`)
+  if (!out.partySeatAnchored) fail('party seat is not anchored — middle-drag pan or cursor-dolly is still enabled')
+  if (!out.gmSeatRoams) fail('GM seat lost its building-camera pan/cursor-dolly')
   if (!process.exitCode) log('PASS — modes+framing, gating, selection, focus pivot, character view, and tabletop seats all verified')
 } catch (e) {
   fail(e?.stack || e?.message || String(e))

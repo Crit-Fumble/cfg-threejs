@@ -9,8 +9,11 @@ import type { Viewer } from './core.js'
  *
  * Scheme — each mode is faithful to the genre it resembles:
  *   2D / Top-Down (Foundry): left = select · right drag = PAN · wheel = zoom · arrows = pan
- *   Free / Orbit  (TaleSpire / Tabletop Simulator): left = select · right drag = ORBIT ·
+ *   Free / GM seat (TaleSpire / Tabletop Simulator): left = select · right drag = ORBIT ·
  *                 MIDDLE drag = PAN · W A S D = ground-pan · Q / E = height down/up · wheel = zoom
+ *   Party seat    ('tabletop', anchored): the eye stays ON the seat ring — arrows/WASD slide the
+ *                 seat along its arc + tilt, right drag orbits the pinned table centre, wheel
+ *                 dollies to centre with an edge-of-table floor. No translation, ever.
  *   Character     (MMORPG, view-only): see below — right drag looks, wheel dollies 1st↔3rd person
  *
  * Character view ('character') is a VIEW-ONLY first/third-person camera anchored on a subject
@@ -146,7 +149,11 @@ export function createViewerControls(viewer: Viewer, opts: ViewerControlsOptions
   // see the GM's screen on the far side; the GM roams the full table. Seeded from the INITIAL mode so a
   // viewer that opens straight into GM View starts on the GM's (north) side, not the default south.
   let seatAzimuth = mode === 'tabletop-gm' ? Math.PI : 0
-  const PLAYER_HALF_ARC = Math.PI / 2 // players see a 180° arc (their half of the table); GM's side stays behind them
+  // Players sweep a 270° arc centred on their south home (±135°) — the quarter behind the GM's
+  // screen (north ±45°) stays out of reach. Must match the party seat slider's travel
+  // (SceneStageChrome), which offers ±(π − π/4); it used to be ±90°, which left the outer 45° of
+  // the slider dead and contradicted the documented 270°.
+  const PLAYER_HALF_ARC = Math.PI - Math.PI / 4
   // The GM sits at π (north) and may sweep the WHOLE table — but bounded, so the camera can't wind
   // round and round forever. Note the range must be expressed within [-π, π]: OrbitControls normalises
   // min/max into that window, so a literal [0, 2π] collapses to [0, 0] and pins the GM facing south.
@@ -282,7 +289,10 @@ export function createViewerControls(viewer: Viewer, opts: ViewerControlsOptions
   // Capture phase → runs before OrbitControls' own pointerdown, so the re-centred
   // target is in place before the rotate starts. Both orbiting modes recentre on the cursor.
   const onCapturePointerDown = (e: PointerEvent) => {
-    if (e.button === 2 && orbit3d.enableRotate && (mode === 'free' || mode === 'tabletop' || mode === 'tabletop-gm')) refocusOrbit(e.clientX, e.clientY)
+    // NOT the party seat ('tabletop'): re-pivoting under the cursor slides the orbit centre — and
+    // with it the whole seat anchor — off the table centre, which is how a player used to creep
+    // toward the GM's side. The party seat always orbits the pinned table centre.
+    if (e.button === 2 && orbit3d.enableRotate && (mode === 'free' || mode === 'tabletop-gm')) refocusOrbit(e.clientX, e.clientY)
   }
 
   // ── Keyboard: arrows pan (all modes), WASD fly + Q/E elevation (Free only) ────────
@@ -308,6 +318,7 @@ export function createViewerControls(viewer: Viewer, opts: ViewerControlsOptions
   const right = new THREE.Vector3()
   const up = new THREE.Vector3(0, 1, 0)
   const move = new THREE.Vector3()
+  const seatSph = new THREE.Spherical()
   const tickKeys = (): boolean => {
     if (!keys.size || !keyPanEnabled) return false
     if (mode === 'character') {
@@ -322,6 +333,31 @@ export function createViewerControls(viewer: Viewer, opts: ViewerControlsOptions
       if (keys.has('arrowup')) { charPitch = clamp(charPitch + tilt, -1.45, 1.45); turned = true }
       if (keys.has('arrowdown')) { charPitch = clamp(charPitch - tilt, -1.45, 1.45); turned = true }
       return turned
+    }
+    if (mode === 'tabletop') {
+      // PARTY SEAT — anchored like character view, not a fly camera (Foundry parity: the plugin
+      // maps the canvas-pan binds to turning, never translation). The eye stays on the seat ring
+      // around the pinned table-centre pivot: left/right (or A/D) slide the seat along its arc,
+      // up/down (or W/S) tilt the view; nothing here can walk the camera across the table to look
+      // behind the GM's screen, regardless of zoom.
+      const yaw = 0.02 // rad/frame while held — smooth seat slide
+      const tilt = 0.015
+      let dTheta = 0
+      let dPhi = 0
+      if (keys.has('arrowleft') || keys.has('a')) dTheta -= yaw
+      if (keys.has('arrowright') || keys.has('d')) dTheta += yaw
+      if (keys.has('arrowup') || keys.has('w')) dPhi -= tilt
+      if (keys.has('arrowdown') || keys.has('s')) dPhi += tilt
+      if (!dTheta && !dPhi) return false
+      move.copy(viewer.camera.position).sub(orbit3d.target)
+      seatSph.setFromVector3(move)
+      const range = seatRangeFor(mode)
+      seatSph.theta = clamp(seatSph.theta + dTheta, range.min, range.max)
+      seatSph.phi = clamp(seatSph.phi + dPhi, orbit3d.minPolarAngle, orbit3d.maxPolarAngle)
+      move.setFromSpherical(seatSph)
+      viewer.camera.position.copy(orbit3d.target).add(move)
+      viewer.camera.lookAt(orbit3d.target)
+      return true
     }
     move.set(0, 0, 0)
     if (mode === '2d') {
@@ -346,8 +382,9 @@ export function createViewerControls(viewer: Viewer, opts: ViewerControlsOptions
     if (keys.has('arrowdown')) move.addScaledVector(fwd, -1)
     if (keys.has('arrowright')) move.add(right)
     if (keys.has('arrowleft')) move.addScaledVector(right, -1)
-    if (mode === 'free' || mode === 'tabletop' || mode === 'tabletop-gm') {
-      // WASD ground-pans on X/Z (fwd is already flattened to the ground plane above).
+    if (mode === 'free' || mode === 'tabletop-gm') {
+      // WASD ground-pans on X/Z (fwd is already flattened to the ground plane above). The party
+      // seat ('tabletop') never reaches here — its keys orbit the seat above.
       if (keys.has('w')) move.add(fwd)
       if (keys.has('s')) move.addScaledVector(fwd, -1)
       if (keys.has('d')) move.add(right)
@@ -426,7 +463,9 @@ export function createViewerControls(viewer: Viewer, opts: ViewerControlsOptions
   const focusHit = new THREE.Vector3()
   const focusDelta = new THREE.Vector3()
   const onDblClick = (e: MouseEvent) => {
-    if (mode !== 'free' && mode !== 'tabletop' && mode !== 'tabletop-gm') return
+    // Free + GM seat only — double-click focus TRANSLATES the pivot, which would let the party
+    // seat teleport across the table (the seat anchor must stay on the table centre).
+    if (mode !== 'free' && mode !== 'tabletop-gm') return
     const r = dom.getBoundingClientRect()
     pivotNdc.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1)
     ray.setFromCamera(pivotNdc, viewer.camera)
@@ -438,7 +477,7 @@ export function createViewerControls(viewer: Viewer, opts: ViewerControlsOptions
       break
     }
     if (!got) return
-    if (mode === 'tabletop' || mode === 'tabletop-gm') focusHit.y = 0
+    if (mode === 'tabletop-gm') focusHit.y = 0 // keep the GM seat's pivot ground-locked
     focusDelta.copy(focusHit).sub(orbit3d.target)
     viewer.camera.position.add(focusDelta)
     orbit3d.target.add(focusDelta)
@@ -472,6 +511,12 @@ export function createViewerControls(viewer: Viewer, opts: ViewerControlsOptions
     viewer.camera.updateProjectionMatrix()
     orbit3d.enabled = mode !== '2d' && mode !== 'character'
     orbit2d.enabled = mode === '2d'
+    // Party seat: dolly straight at the pinned table centre — zoom-to-cursor translates the target
+    // laterally, which was an unclamped way to drift the seat across the table. And floor the dolly
+    // so the eye stays out at the table's edge ("lean in", never "stand on the table"); every other
+    // 3D mode keeps the cursor-dolly Map/RTS feel and the close-focus floor.
+    orbit3d.zoomToCursor = mode !== 'tabletop'
+    orbit3d.minDistance = mode === 'tabletop' ? Math.max(50, span * 0.5) : 50
     if (mode === 'character') {
       viewer.setMode('3d')
       viewer.camera.up.set(0, 1, 0)
@@ -506,14 +551,16 @@ export function createViewerControls(viewer: Viewer, opts: ViewerControlsOptions
       orbit3d.target.set(cx, 0, cz)
       orbit3d.update()
     } else if (mode === 'tabletop' || mode === 'tabletop-gm') {
-      // TABLETOP — the constrained building camera (the middle ground between locked Top-Down and
-      // free-fly). An angled orbit that CAN'T get lost: pitch clamped so it never flips under the map
-      // or tips fully overhead, target pinned to the ground plane (screen-space panning OFF pans along
-      // the ground), zoom-to-cursor. No focused token needed. RIGHT-drag orbits (pivots under cursor),
-      // MIDDLE-drag pans, wheel zooms, WASD ground-pans; LEFT stays free for the host (sculpt/select).
+      // TABLETOP — the seat cameras. 'tabletop-gm' (the GM's seat) is the constrained BUILDING
+      // camera: angled orbit that can't get lost (pitch clamped, target ground-pinned), plus
+      // MIDDLE-drag pan, double-click focus, zoom-to-cursor and WASD ground-pan for roaming the
+      // table. 'tabletop' (the PARTY seat) is stricter — a seat, not a vehicle: the orbit pivot is
+      // PINNED to the table centre (no pan, no refocus, no double-click focus, dolly to centre
+      // instead of to cursor) and the dolly floor keeps the eye out at the table's edge, so no
+      // combination of keys/drag/zoom can carry a player behind the GM's screen.
       viewer.setMode('3d')
       orbit3d.enableRotate = true
-      orbit3d.enablePan = true
+      orbit3d.enablePan = mode === 'tabletop-gm'
       orbit3d.screenSpacePanning = false // pan across the ground, not the screen plane
       orbit3d.minPolarAngle = 0.30 // ~17° from overhead — a healthy top-ish tilt
       orbit3d.maxPolarAngle = 1.30 // ~74° — never dips to the horizon / under the map
