@@ -711,6 +711,19 @@ export function createViewer({
     onErrors: (() => void)[]
   }
   const textureCache = new Map<string, TextureEntry>()
+  /** Dynamic-ring subject zoom (`ring.subject.scale` > 1): Foundry's ring shader crops the zoomed
+   * subject to the token frame — it can NEVER grow the token beyond its cell. Emulate with a UV
+   * crop on a PRIVATE texture clone (cache textures are shared; repeat/offset must not leak into
+   * other consumers). The caller owns the clone — tag its object `userData.cfgOwnedMaps` so
+   * disposeObject frees the duplicate GPU upload. */
+  function ringZoomCrop(tex: ThreeNS.Texture, subjectScale: number): ThreeNS.Texture {
+    const zoom = 1 / subjectScale
+    const clone = tex.clone()
+    clone.repeat.set(zoom, zoom)
+    clone.offset.set((1 - zoom) / 2, (1 - zoom) / 2)
+    clone.needsUpdate = true
+    return clone
+  }
   function getTexture(url: string, onLoad?: (tex: ThreeNS.Texture) => void, onError?: () => void): ThreeNS.Texture {
     const hit = textureCache.get(url)
     if (hit) {
@@ -730,6 +743,48 @@ export function createViewer({
       swept: false,
       onLoads: onLoad ? [onLoad] : [],
       onErrors: onError ? [onError] : [],
+    }
+    // Animated token/tile art (.webm/.mp4 — standard with dnd5e dynamic rings) — TextureLoader is an
+    // ImageLoader and rejects video, which used to drop these tokens to the fallback slab. Route video
+    // URLs through a muted looping <video> + VideoTexture. (The viewer renders on-demand, so the video
+    // may hold a frame between renders — correct art beats a colored box; continuous playback is a
+    // render-loop follow-up.)
+    if (/\.(webm|mp4|m4v|ogv)(\?|#|$)/i.test(url) && typeof document !== 'undefined') {
+      const video = document.createElement('video')
+      video.crossOrigin = 'anonymous'
+      video.muted = true
+      video.loop = true
+      video.playsInline = true
+      video.preload = 'auto'
+      const vtex = new THREE.VideoTexture(video)
+      vtex.colorSpace = THREE.SRGBColorSpace
+      entry.tex = vtex
+      // Stop the hidden <video> when the texture is collected — a playing element outlives its GPU
+      // handle otherwise (network + decode keep running with no consumer).
+      vtex.addEventListener('dispose', () => {
+        try {
+          video.pause()
+          video.removeAttribute('src')
+          video.load()
+        } catch { /* detached */ }
+      })
+      video.addEventListener('loadeddata', () => {
+        entry.state = 'loaded'
+        if (entry.swept) return
+        void video.play().catch(() => { /* autoplay policy — first frame still shows */ })
+        for (const w of entry.onLoads.splice(0)) w(entry.tex)
+        entry.onErrors.length = 0
+        render()
+      }, { once: true })
+      video.addEventListener('error', () => {
+        entry.state = 'error'
+        if (entry.swept) return
+        for (const w of entry.onErrors.splice(0)) w()
+        entry.onLoads.length = 0
+      }, { once: true })
+      video.src = url
+      textureCache.set(url, entry)
+      return entry.tex
     }
     entry.tex = textureLoader.load(
       url,
@@ -947,9 +1002,10 @@ export function createViewer({
       if (c.geometry && !pooledGeos.has(c.geometry) && !c.isSprite) c.geometry.dispose?.()
       const mats = Array.isArray(c.material) ? c.material : c.material ? [c.material] : []
       for (const m of mats) {
-        // Private GLB copies own their embedded textures; every other material's
-        // maps are cache-owned (material.dispose() never touches .map anyway).
-        if (c.userData?.cfgOwnedGlb) {
+        // Private GLB copies own their embedded textures, and ring-zoom sprites own their UV-crop
+        // texture CLONES (cfgOwnedMaps); every other material's maps are cache-owned
+        // (material.dispose() never touches .map anyway).
+        if (c.userData?.cfgOwnedGlb || c.userData?.cfgOwnedMaps) {
           for (const key of Object.keys(m)) {
             if (m[key]?.isTexture) m[key].dispose()
           }
@@ -2262,11 +2318,13 @@ export function createViewer({
       })
       const art = new THREE.Mesh(pooledGeo('quad', () => new THREE.PlaneGeometry(1, 1)), artMat)
       // texture.scaleX/scaleY: sign on X mirrors the art; |Y| keeps it upright.
-      // artScale (Dynamic Ring `ring.subject.scale`) sizes the portrait within its ring.
+      // artScale (Dynamic Ring `ring.subject.scale`): > 1 = UV zoom-crop within the cell (Foundry
+      // ring parity — never grows the token), < 1 = shrink within the cell. See the 3D billboard.
       const aScale2d = t.artScale ?? 1
+      const shrink2d = Math.min(1, Math.max(0.01, aScale2d))
       // Pre-load: stretch to the cell (fill). Re-scaled with `fit` in the texture callback below
       // once the natural size is known. Untextured (color) tokens keep this footprint.
-      art.scale.set(tw * (t.textureScaleX ?? 1) * aScale2d, th * Math.abs(t.textureScaleY ?? 1) * aScale2d, 1)
+      art.scale.set(tw * (t.textureScaleX ?? 1) * shrink2d, th * Math.abs(t.textureScaleY ?? 1) * shrink2d, 1)
       art.rotation.x = -Math.PI / 2
       // Token facing: after laying the quad flat, spin it in the ground plane about world-up.
       // Sign matches the levels-quad convention (Foundry rotation is clockwise-from-north).
@@ -2275,11 +2333,13 @@ export function createViewer({
       group.add(art)
       if (t.texture) {
         getTexture(t.texture, (tex) => {
-          artMat.map = tex
+          const zoomed2d = aScale2d > 1 ? ringZoomCrop(tex, aScale2d) : tex
+          if (zoomed2d !== tex) art.userData.cfgOwnedMaps = true // owns its UV-crop clone
+          artMat.map = zoomed2d
           artMat.needsUpdate = true
           const im = tex.image as { width?: number; height?: number } | undefined
           const [fw, fh] = fitDims(tw, th, im?.width, im?.height)
-          art.scale.set(fw * (t.textureScaleX ?? 1) * aScale2d, fh * Math.abs(t.textureScaleY ?? 1) * aScale2d, 1)
+          art.scale.set(fw * (t.textureScaleX ?? 1) * shrink2d, fh * Math.abs(t.textureScaleY ?? 1) * shrink2d, 1)
           render()
         })
       }
@@ -2422,8 +2482,16 @@ export function createViewer({
       // and a renderOrder above the walls so the blend order — and thus how see-through it
       // looks — stays consistent as the camera orbits (the walls still WRITE depth, so a wall
       // genuinely in front still occludes it). Baked at creation → robust to async art arrival.
+      // texture.scaleX/scaleY: sign on X mirrors the art (facing); |Y| keeps the mini upright.
+      // artScale (Dynamic Ring `ring.subject.scale`): > 1 ZOOMS the portrait within its cell (UV
+      // crop — Foundry's ring shader crops to the frame, it never grows the token; multiplying the
+      // sprite instead spilled dnd5e ring tokens 20–100% into neighbouring cells), < 1 shrinks the
+      // sprite inside the cell. `fit` frames the art by its natural size (tex already loaded here).
+      const aScale = t.artScale ?? 1
+      const zoomed = tex && aScale > 1 ? ringZoomCrop(tex, aScale) : tex
+      const shrink = Math.min(1, Math.max(0.01, aScale))
       const mat = new THREE.SpriteMaterial({
-        map: tex || undefined,
+        map: zoomed || undefined,
         color: tex ? (t.tint ?? 0xffffff) : (t.color ?? 0x6a90c0),
         transparent: !tex || translucent,
         opacity: alpha,
@@ -2431,16 +2499,17 @@ export function createViewer({
         depthWrite: !translucent,
       })
       const sprite = new THREE.Sprite(mat)
+      if (zoomed && zoomed !== tex) sprite.userData.cfgOwnedMaps = true // owns its UV-crop clone
       if (translucent) sprite.renderOrder = 20
       const billboardH = Math.max(th, footprint)
-      // texture.scaleX/scaleY: sign on X mirrors the art (facing); |Y| keeps the mini upright.
-      // artScale (Dynamic Ring `ring.subject.scale`) sizes the portrait within its ring. `fit`
-      // frames the art within the cell by its natural size (tex already loaded here).
-      const aScale = t.artScale ?? 1
       const bim = tex?.image as { width?: number; height?: number } | undefined
       const [bw, bh] = fitDims(tw, billboardH, bim?.width, bim?.height)
-      sprite.scale.set(bw * (t.textureScaleX ?? 1) * aScale, bh * Math.abs(t.textureScaleY ?? 1) * aScale, 1)
-      sprite.position.set(0, bh / 2, 0)
+      const sw = bw * (t.textureScaleX ?? 1) * shrink
+      const sh = bh * Math.abs(t.textureScaleY ?? 1) * shrink
+      sprite.scale.set(sw, sh, 1)
+      // Feet on the ground: centre at HALF THE RENDERED HEIGHT. The old `bh / 2` ignored the art
+      // scale, so any scaled mini floated above (scale < 1) or sank into (scale > 1) the floor.
+      sprite.position.set(0, Math.abs(sh) / 2, 0)
       group.add(sprite)
       render()
     }
