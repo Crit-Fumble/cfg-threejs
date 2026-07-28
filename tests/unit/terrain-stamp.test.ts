@@ -39,21 +39,21 @@ describe('TerrainStampController', () => {
     expect(hp[0]).toBe(0)
   })
 
-  it('Q/E step the target by grid units; Q floors at 0', () => {
+  it('Q/E step the target by grid units, BELOW grade allowed (trenches/pits — owner 2026-07-28)', () => {
     const { host } = makeHost()
     const ctrl = new TerrainStampController(host, { ...cfg }, { onCommit: () => {} })
+    expect(ctrl.currentLevel).toBe(0) // always arms at ground level, not the height under the reticle
     ctrl.key('e'); ctrl.key('e'); ctrl.key('e') // 0→5→10→15
     expect(ctrl.currentLevel).toBe(15)
-    ctrl.key('q'); ctrl.key('q') // 15→10→5
-    expect(ctrl.currentLevel).toBe(5)
-    ctrl.key('q'); ctrl.key('q') // 5→0→0 (floored, never negative)
-    expect(ctrl.currentLevel).toBe(0)
+    ctrl.key('q'); ctrl.key('q'); ctrl.key('q'); ctrl.key('q') // 15→10→5→0→-5
+    expect(ctrl.currentLevel).toBe(-5)
   })
 
-  it('WASD is handled (seat-relative) and unknown keys are not', () => {
+  it('WASD is handled (token-movement parity); arrows are DECLINED so they stay on the camera', () => {
     const { host } = makeHost({ x: 0, z: 1 })
     const ctrl = new TerrainStampController(host, { ...cfg }, { onCommit: () => {} })
-    for (const k of ['w', 'a', 's', 'd', 'ArrowUp', 'Q', 'E']) expect(ctrl.key(k)).toBe(true)
+    for (const k of ['w', 'a', 's', 'd', 'Q', 'E']) expect(ctrl.key(k)).toBe(true)
+    for (const k of ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight']) expect(ctrl.key(k)).toBe(false)
     expect(ctrl.key('x')).toBe(false)
     expect(ctrl.key(' ')).toBe(false)
   })

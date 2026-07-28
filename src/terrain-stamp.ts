@@ -131,8 +131,9 @@ export class TerrainStampController {
 
     this.i = Math.floor(this.squaresW / 2)
     this.j = Math.floor(this.squaresH / 2)
-    const c = this.squareCenterSample(this.i, this.j)
-    this.level = Math.round((this.heights[c.j * cols + c.i] || 0) / cfg.step) * cfg.step
+    // Start at ground level (owner 2026-07-28) — the stamp always arms at 0, not the height under
+    // the reticle, so Q immediately digs below grade (trenches/pits) and E builds up from flat.
+    this.level = 0
     this.placed = false
   }
 
@@ -193,19 +194,22 @@ export class TerrainStampController {
     this.paint()
   }
 
-  /** Keyboard: WASD/arrows walk the ghost a grid square (seat-relative); Q/E lower/raise the target. */
+  /** Keyboard: WASD walks the ghost a grid square (seat-relative — TOKEN-movement parity, owner
+   *  2026-07-28); Q/E lower/raise the target, BELOW grade allowed (trenches/ditches/pits). Arrow
+   *  keys are deliberately NOT handled — they stay bound to the camera, exactly as in 2D view, so
+   *  a host's key router must let declined keys fall through to its camera controls. */
   key(rawKey: string): boolean {
     const k = rawKey.toLowerCase()
     let di = 0
     let dj = 0
     let dLevel = 0
-    if (k === 'w' || k === 'arrowup' || k === 's' || k === 'arrowdown' || k === 'a' || k === 'arrowleft' || k === 'd' || k === 'arrowright') {
+    if (k === 'w' || k === 's' || k === 'a' || k === 'd') {
       const f = this.host.getCameraForward()
       let wx = 0
       let wz = 0
-      if (k === 'w' || k === 'arrowup') { wx = f.x; wz = f.z } // away across the table
-      else if (k === 's' || k === 'arrowdown') { wx = -f.x; wz = -f.z } // toward you
-      else if (k === 'd' || k === 'arrowright') { wx = -f.z; wz = f.x } // your right
+      if (k === 'w') { wx = f.x; wz = f.z } // away across the table
+      else if (k === 's') { wx = -f.x; wz = -f.z } // toward you
+      else if (k === 'd') { wx = -f.z; wz = f.x } // your right
       else { wx = f.z; wz = -f.x } // your left
       if (Math.abs(wx) >= Math.abs(wz)) di = Math.sign(wx)
       else dj = Math.sign(wz)
@@ -217,7 +221,7 @@ export class TerrainStampController {
       this.i = Math.max(0, Math.min(this.squaresW - 1, this.i + di))
       this.j = Math.max(0, Math.min(this.squaresH - 1, this.j + dj))
     } else if (dLevel) {
-      this.level = Math.max(0, this.level + dLevel)
+      this.level = this.level + dLevel // negative = below grade
     }
     // Ethereal: keys just steer the ghost. Placed: nudging keeps laying tiles.
     if (this.placed) this.paint()
