@@ -17,6 +17,10 @@ export * from './quality.js'
 export * from './vision.js'
 export * from './terrain-brush.js'
 export * from './terrain-stamp.js'
+export * from './scene-module.js'
+export * from './render-host.js'
+export * from './picking.js'
+export * from './geometry.js'
 export {
   dispositionColor as foundryDispositionColor,
   foundrySceneToViewer,

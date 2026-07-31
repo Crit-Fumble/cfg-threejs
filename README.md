@@ -37,6 +37,42 @@ existing `vtt-viewer/*` subpaths for now, so no consumer import changed.
 | `/vision` | token visibility |
 | `/terrain-brush` | `applyTerrainBrush` — heightfield sculpt |
 | `/terrain-stamp` | `TerrainStampController` — framework-free Level Stamp |
+| `/render-host` | `createRenderHost` — persistent renderer + RAF loop + browser-environment handling |
+| `/scene-module` | `SceneModule` / `SceneContext` — the pluggable-scene contract a render host displays |
+| `/picking` | `createPicker`, `ndcFromClient` — screen px → ground point / nearest object |
+| `/geometry` | `createPentagonalTrapezohedronGeometry` — the d10 solid three.js doesn't ship |
+
+## The host layer (v0.4.0)
+
+`/core` renders a **VTT scene**. `/render-host` + `/scene-module` are one level down: a persistent
+`WebGLRenderer` that outlives the scenes shown in it, plus the contract those scenes implement.
+That split is what lets a surface with no VTT semantics at all — GameBox, a title backdrop, a dice
+tray — reuse the environment handling without dragging in the scene graph.
+
+```ts
+import { createRenderHost } from '@crit-fumble/threejs/render-host'
+import type { SceneModule } from '@crit-fumble/threejs/scene-module'
+import * as THREE from 'three'
+
+const host = createRenderHost({
+  element,
+  THREE,
+  quality: () => ({ maxPixelRatio: 1.5, fpsCap: 60 }),  // read live, per frame
+  onFps: (fps) => hud.report(fps),
+  onUnsupported: () => showCssFallback(),               // no-webgl AND context-lost
+})
+host.setModule(myScene)   // swap freely — the GL context is never torn down
+```
+
+The host owns the renderer, camera aspect/projection, the RAF loop, resize, reduced-motion,
+visibility pausing and context-loss recovery. A module owns scene *contents* only. **A module with
+no `tick` is static** — the host paints one frame and never starts a loop, which is how an ambient
+backdrop costs nothing on battery.
+
+Why it exists: this machinery had four independent implementations (cfg-core-browser's
+`StageCanvas`, the `TitleScreenBackdrop` it came from, `core.ts`'s private `createRenderer`, and the
+FoundryVTT plugin's ticker), each with a different fallback story. Same for `/picking`, which was
+written three times.
 
 ## Tests
 
