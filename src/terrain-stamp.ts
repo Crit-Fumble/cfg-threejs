@@ -110,6 +110,10 @@ export class TerrainStampController {
   private j: number
   private level: number // GAME UNITS
   private heights: number[] // GAME UNITS
+  /** Heights EXCLUDING the current footprint's imprint. paint() always rebuilds from this, so
+   *  resizing or re-levelling the resting stamp REPLACES its imprint instead of accumulating.
+   *  Laying a tile (moving to a new square while placed) folds the imprint in and re-snapshots. */
+  private baseline: number[]
   private placed = false
 
   private commitTimer: ReturnType<typeof setTimeout> | null = null
@@ -128,6 +132,7 @@ export class TerrainStampController {
     const livePx = host.getTerrainHeights()
     const basePx = livePx && livePx.length === cols * rows ? livePx : new Array(cols * rows).fill(0)
     this.heights = basePx.map((h) => h / pxPerUnit)
+    this.baseline = this.heights.slice()
 
     this.i = Math.floor(this.squaresW / 2)
     this.j = Math.floor(this.squaresH / 2)
@@ -188,6 +193,9 @@ export class TerrainStampController {
 
   /** Drop the stamp at (u,v): imprint + mark resting (the only thing that changes terrain via pointer). */
   placeAt(u: number, v: number): void {
+    // Placing somewhere new while already resting LAYS the current tile — fold it into the
+    // baseline so it survives, exactly like nudging with WASD does.
+    if (this.placed) this.layCurrent()
     this.i = Math.max(0, Math.min(this.squaresW - 1, Math.floor(u * this.squaresW)))
     this.j = Math.max(0, Math.min(this.squaresH - 1, Math.floor(v * this.squaresH)))
     this.placed = true
@@ -218,6 +226,10 @@ export class TerrainStampController {
     else return false
 
     if (di || dj) {
+      // "Placed: nudging keeps laying tiles" — so the tile under the stamp becomes permanent
+      // before it walks on. Level changes (Q/E) deliberately do NOT lay: they re-imprint the
+      // same footprint at the new height.
+      if (this.placed) this.layCurrent()
       this.i = Math.max(0, Math.min(this.squaresW - 1, this.i + di))
       this.j = Math.max(0, Math.min(this.squaresH - 1, this.j + dj))
     } else if (dLevel) {
@@ -229,9 +241,15 @@ export class TerrainStampController {
     return true
   }
 
-  /** Imprint every covered grid square flat to the target level, re-displace the mesh, debounce a commit. */
+  /** Imprint every covered grid square flat to the target level, re-displace the mesh, debounce a commit.
+   *
+   *  Rebuilds from `baseline` first. Without that the imprint is purely additive, so shrinking the
+   *  wheel left every cell the LARGER footprint had already flattened still flat — the stamp
+   *  appeared to grow but never shrink (reported in prod against the FoundryVTT plugin, which
+   *  shares this controller). Same applies to re-levelling with Q/E at a fixed position. */
   private paint(): void {
     const { cols, rows } = this.cfg
+    this.heights = this.baseline.slice()
     const half = Math.floor(this.sizeSquares() / 2)
     for (let gy = this.j - half; gy <= this.j + half; gy++) {
       for (let gx = this.i - half; gx <= this.i + half; gx++) {
@@ -250,6 +268,12 @@ export class TerrainStampController {
       this.commitTimer = null
       this.cb.onCommit(this.heights.slice())
     }, 300)
+  }
+
+  /** Make the current imprint permanent — the next paint() rebuilds on top of it rather than
+   *  replacing it. Called when the stamp walks to a new square, which is what "laying tiles" means. */
+  private layCurrent(): void {
+    this.baseline = this.heights.slice()
   }
 
   /** Disarm: flush any pending commit + hide the reticle. */

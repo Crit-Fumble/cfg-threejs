@@ -24,6 +24,62 @@ function makeHost(camForward = { x: 0, z: 1 }) {
 
 const cfg = { cols: COLS, rows: ROWS, gridSize: 100, boundsWidth: 2400, boundsHeight: 2400, pxPerUnit: 20, step: 5, shape: 'square' as const, radiusFrac: 0.02 }
 
+describe('TerrainStampController — resize shrinks the imprint (prod bug, FoundryVTT plugin)', () => {
+  // Reported symptom: "the stamp tool would only grow when resizing, never shrink." paint() used
+  // to write straight into the live height field, so a smaller footprint simply imprinted fewer
+  // cells while every cell the LARGER footprint had already flattened stayed flat.
+
+  it('shrinking the wheel RESTORES the cells the larger footprint flattened', () => {
+    const { host, heights } = makeHost()
+    // squaresW = 2400/100 = 24. sizeSquares = round(radiusFrac * 24 * 2), floored at 1.
+    const ctrl = new TerrainStampController(host, { ...cfg, radiusFrac: 0.1 }, { onCommit: () => {} }) // ~5 squares
+    ctrl.key('e') // level 5
+    ctrl.placeAt(0.5, 0.5)
+
+    const wide = heights()
+    const outerIdx = (12 - 2) * COLS + (12 - 2) // a cell only the WIDE footprint covers
+    expect(wide[outerIdx]).toBe(100) // 5 ft x 20 px/ft — flattened by the wide stamp
+
+    ctrl.setRadiusFrac(0.02) // shrink to a single square
+    const narrow = heights()
+    expect(narrow[12 * COLS + 12]).toBe(100) // still stamped under the reticle
+    expect(narrow[outerIdx]).toBe(0) // ⬅ the bug: this used to stay 100
+  })
+
+  it('re-levelling in place REPLACES the imprint rather than stacking', () => {
+    const { host, heights } = makeHost()
+    const ctrl = new TerrainStampController(host, { ...cfg }, { onCommit: () => {} })
+    ctrl.key('e') // 5
+    ctrl.placeAt(0.5, 0.5)
+    expect(heights()[12 * COLS + 12]).toBe(100)
+    ctrl.key('q') // back to 0 at the same spot
+    expect(heights()[12 * COLS + 12]).toBe(0)
+  })
+
+  it('but WALKING the placed stamp still LAYS tiles — movement stays additive', () => {
+    // The additive behaviour is deliberate for movement ("nudging keeps laying tiles"); only the
+    // resize/re-level path was wrong. Guard against over-correcting into a single moving tile.
+    const { host, heights } = makeHost({ x: 0, z: 1 })
+    const ctrl = new TerrainStampController(host, { ...cfg }, { onCommit: () => {} })
+    ctrl.key('e')
+    ctrl.placeAt(0.5, 0.5)
+    const before = heights()[12 * COLS + 12]
+    expect(before).toBe(100)
+    ctrl.key('w') // walk one square — the tile just laid must survive
+    expect(heights()[12 * COLS + 12]).toBe(100)
+    expect(ctrl.isPlaced).toBe(true)
+  })
+
+  it('placing again elsewhere lays the previous tile', () => {
+    const { host, heights } = makeHost()
+    const ctrl = new TerrainStampController(host, { ...cfg }, { onCommit: () => {} })
+    ctrl.key('e')
+    ctrl.placeAt(0.5, 0.5)
+    ctrl.placeAt(0.25, 0.25)
+    expect(heights()[12 * COLS + 12]).toBe(100) // first tile still there
+  })
+})
+
 describe('TerrainStampController', () => {
   it('placeAt imprints the covered grid square FLAT to the target elevation (px = level × pxPerUnit)', () => {
     const { host, heights } = makeHost()
