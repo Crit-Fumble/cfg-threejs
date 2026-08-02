@@ -1,0 +1,6 @@
+# Auto-requests the owner review on every pull request.
+#
+# Paired with branch protection: `require_code_owner_reviews` on `main` is what
+# makes this a gate rather than a notification. Contributors from the public
+# Quest Board open PRs against `staging`; `main` is only ever promoted to.
+* @HobDaytrain
