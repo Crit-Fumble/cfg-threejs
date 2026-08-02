@@ -1,6 +1,14 @@
-name: test
+name: ci
 
 # Push/PR gate for @crit-fumble/threejs.
+#
+# ── Named `ci`, because a status check is referenced by JOB NAME (dt#373) ──
+#
+# This job was called `test`. Branch protection names its required checks by job name, and every
+# other protected repo in the org gates on `ci` — so a differently-named job here would have made
+# cfg-threejs the one repo whose protection reads differently from its siblings for no reason.
+# Renamed before protection is applied rather than after, because changing a job name once a check
+# is required leaves protection pointing at a context that no longer reports.
 #
 # This repo previously had NO push or PR workflow at all — `release.yml` was the only automation,
 # it ran on tag push only, and it ran `npm test` (jest) alone. The 8 headless-browser suites under
@@ -19,7 +27,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  test:
+  ci:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -40,6 +48,13 @@ jobs:
 
       - name: Typecheck
         run: npm run typecheck
+
+      # A distinct signal from `typecheck`: this is what `prepublishOnly` runs, so it catches
+      # emit-only failures (declaration emit, rootDir escapes) that `--noEmit` never sees. Without
+      # it a publish is the first thing that ever runs `tsc` in emit mode — and a publish cannot be
+      # taken back.
+      - name: Build
+        run: npm run build
 
       - name: Unit tests
         run: npm test

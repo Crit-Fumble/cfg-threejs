@@ -15,7 +15,7 @@ name: release
 # a publish is effectively irreversible, so the gate here is the full suite, not just jest.
 # The browser suites are the only ones that catch real-three camera behaviour (azimuth
 # normalisation, the constructor-captured orbit frame); two camera regressions shipped while
-# they ran nowhere automated. `test.yml` runs the same set on every push/PR.
+# they ran nowhere automated. `ci.yml` runs the same set on every push/PR.
 
 on:
   push:
