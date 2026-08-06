@@ -14,7 +14,7 @@ name: test
 
 on:
   push:
-    branches: ['main', 'staging', 'next']
+    branches: ['main', 'next']
   pull_request:
   workflow_dispatch:
 
