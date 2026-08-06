@@ -95,7 +95,7 @@ describe('foundrySceneToViewer (base conversions)', () => {
   })
 
   it('honours an explicit texture.fit', () => {
-    const scene = { grid: { size: 100, distance: 5 }, width: 1000, height: 1000, tokens: [{ _id: 'f', x: 0, y: 0, width: 1, height: 1, texture: { src: 'a.png', fit: 'cover' } }] }
+    const scene = { grid: { size: 100, distance: 5 }, width: 1000, height: 1000, tokens: [{ _id: 'f', x: 0, y: 0, width: 1, height: 1, texture: { src: 'a.png', fit: 'cover' as const } }] }
     expect(foundrySceneToViewer(scene).tokens?.find((x) => x.id === 'f')?.fit).toBe('cover')
   })
 
