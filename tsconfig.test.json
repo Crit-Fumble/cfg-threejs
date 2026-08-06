@@ -1,0 +1,20 @@
+// tests/ is excluded from the emit build (it must never reach dist/ — this is a
+// published package), so this project is what keeps it typechecked. `npm run
+// typecheck` runs both; excluding tests from the build must not mean not checking them.
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    // tests/ sits outside the emit rootDir; nothing is emitted here, so widen it
+    "rootDir": ".",
+    "types": ["jest", "node"],
+    // Mirrors jest.config.cjs moduleNameMapper — tests reach src through this alias
+    "paths": {
+      "@/*": ["./src/*"]
+    }
+  },
+  // The base `exclude` lists tests, and exclude beats include — without this
+  // override the project would silently check nothing at all.
+  "exclude": ["node_modules", "dist"],
+  "include": ["src/**/__tests__/**/*.ts", "src/**/*.test.ts", "tests/**/*.ts"]
+}
