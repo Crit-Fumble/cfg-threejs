@@ -48,8 +48,8 @@
     }
   },
   "devDependencies": {
-    "@playwright/test": "^1.59.1",
-    "@swc/core": "^1.15.33",
+    "@playwright/test": "^1.62.1",
+    "@swc/core": "^1.15.47",
     "@swc/jest": "^0.2.37",
     "@types/jest": "^29.5.14",
     "@types/node": "^26.1.2",
@@ -57,7 +57,7 @@
     "esbuild": "^0.28.1",
     "jest": "^29.7.0",
     "rimraf": "^6.1.2",
-    "three": "^0.184.0",
+    "three": "^0.185.1",
     "typescript": "^6.0.3"
   }
 }
