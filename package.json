@@ -53,7 +53,7 @@
     "@swc/jest": "^0.2.37",
     "@types/jest": "^30.0.0",
     "@types/node": "^26.1.2",
-    "@types/three": "^0.184.1",
+    "@types/three": "^0.185.4",
     "esbuild": "^0.28.1",
     "jest": "^30.4.2",
     "rimraf": "^6.1.2",
